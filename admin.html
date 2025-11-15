@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flash Sale Shopee - Admin</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="admin.css">
+</head>
+
+<body>
+    <header class="header">
+        <div class="container">
+            <h1 class="logo">
+                <span class="logo-icon">⚙️</span>
+                <span class="logo-text">Flash Sale Shopee</span>
+            </h1>
+        </div>
+    </header>
+
+    <main class="main">
+        <div class="container">
+            <!-- Control Section -->
+            <div class="admin-control-section">
+                <!-- System Status Toggle -->
+                <div class="system-status-section">
+                    <label class="system-status-label">
+                        <span>Trạng thái hệ thống:</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="systemStatusToggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span id="systemStatusText" class="system-status-text">Đang tải...</span>
+                    </label>
+                </div>
+
+                <div class="control-row">
+                    <div class="control-group">
+                        <label for="timeSelectAdmin">Chọn khung giờ:</label>
+                        <select id="timeSelectAdmin" class="time-select">
+                            <option value="">Đang tải...</option>
+                        </select>
+                    </div>
+                    <button id="clearTimeBtn" class="load-btn">🗑️ Clear data khung giờ</button>
+                    <button id="downloadBtn" class="download-btn">💾 Tải xuống Excel</button>
+                    <input type="file" id="uploadFile" accept=".xlsx,.xls,.csv" style="display: none;">
+                    <button id="uploadBtn" class="upload-btn">📤 Tải lên Excel</button>
+                    <button id="clearAllBtn" class="clear-all-btn">🗑️ Clear All</button>
+                </div>
+                <div class="info-row">
+                    <span id="productCount" class="product-count">Chưa có dữ liệu</span>
+                </div>
+            </div>
+
+            <!-- Table Section -->
+            <div class="table-section">
+                <div class="table-wrapper">
+                    <table id="productsTable" class="products-table">
+                        <thead>
+                            <tr>
+                                <th>Liên kết gốc</th>
+                                <th>Sub_id1</th>
+                                <th>Sub_id2</th>
+                                <th>Sub_id3</th>
+                                <th>Sub_id4</th>
+                                <th>Sub_id5</th>
+                                <th>Liên kết chuyển đổi</th>
+                                <th>Lí do thất bại</th>
+                            </tr>
+                        </thead>
+                        <tbody id="productsTableBody">
+                            <tr>
+                                <td colspan="8" class="empty-table">Chưa có dữ liệu. Vui lòng chọn khung giờ và nhấn
+                                    "Tải sản phẩm"</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Loading Indicator -->
+            <div id="loadingAdmin" class="loading hidden">
+                <div class="spinner"></div>
+                <p>Đang tải dữ liệu...</p>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2025 Flash Sale Shopee</p>
+        </div>
+    </footer>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="admin.js"></script>
+</body>
+
+</html>

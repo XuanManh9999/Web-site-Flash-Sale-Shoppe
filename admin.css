@@ -1,0 +1,363 @@
+/* Admin Page Styles */
+.admin-control-section {
+    background: var(--card-bg);
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    margin-bottom: 30px;
+}
+
+/* System Status Section */
+.system-status-section {
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    border: 2px solid #e0e0e0;
+}
+
+.system-status-label {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    font-weight: 600;
+    color: var(--text-color);
+    cursor: pointer;
+}
+
+.system-status-text {
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.95rem;
+}
+
+.system-status-text.active {
+    background: #4caf50;
+    color: white;
+}
+
+.system-status-text.maintenance {
+    background: #ff9800;
+    color: white;
+}
+
+/* Toggle Switch */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 60px;
+    height: 30px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: 0.4s;
+    border-radius: 30px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 22px;
+    width: 22px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: 0.4s;
+    border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+    background-color: #4caf50;
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+    transform: translateX(30px);
+}
+
+.toggle-switch input:focus + .toggle-slider {
+    box-shadow: 0 0 1px #4caf50;
+}
+
+.control-row {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 15px;
+}
+
+.control-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.control-group label {
+    font-weight: 600;
+    color: var(--text-color);
+    white-space: nowrap;
+}
+
+.load-btn,
+.download-btn,
+.upload-btn {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    white-space: nowrap;
+}
+
+.load-btn {
+    background: var(--primary-color);
+    color: white;
+}
+
+.load-btn:hover {
+    background: #d63015;
+    transform: translateY(-2px);
+}
+
+.download-btn {
+    background: #4caf50;
+    color: white;
+}
+
+.download-btn:hover {
+    background: #45a049;
+    transform: translateY(-2px);
+}
+
+.upload-btn {
+    background: #2196f3;
+    color: white;
+}
+
+.upload-btn:hover {
+    background: #1976d2;
+    transform: translateY(-2px);
+}
+
+.download-json-btn {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    white-space: nowrap;
+    background: #9c27b0;
+    color: white;
+}
+
+.download-json-btn:hover {
+    background: #7b1fa2;
+    transform: translateY(-2px);
+}
+
+.clear-all-btn {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    white-space: nowrap;
+    background: #f44336;
+    color: white;
+}
+
+.clear-all-btn:hover {
+    background: #d32f2f;
+    transform: translateY(-2px);
+}
+
+.info-row {
+    padding-top: 15px;
+    border-top: 1px solid var(--border-color);
+}
+
+.product-count {
+    font-weight: 600;
+    color: var(--text-color);
+    font-size: 1rem;
+}
+
+/* Table Section */
+.table-section {
+    background: var(--card-bg);
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    overflow-x: auto;
+}
+
+.table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.products-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 1200px;
+}
+
+.products-table thead {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+    color: white;
+}
+
+.products-table th {
+    padding: 15px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.95rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.products-table th:first-child {
+    border-left: none;
+}
+
+.products-table th:last-child {
+    border-right: none;
+}
+
+.products-table tbody tr {
+    border-bottom: 1px solid var(--border-color);
+    transition: background-color 0.2s;
+}
+
+.products-table tbody tr:hover {
+    background-color: #f9f9f9;
+}
+
+.products-table tbody tr:nth-child(even) {
+    background-color: #fafafa;
+}
+
+.products-table tbody tr:nth-child(even):hover {
+    background-color: #f0f0f0;
+}
+
+.products-table td {
+    padding: 12px;
+    font-size: 0.9rem;
+    vertical-align: top;
+}
+
+.products-table td input,
+.products-table td select {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.9rem;
+    transition: border-color 0.3s;
+}
+
+.products-table td input:focus,
+.products-table td select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.products-table td input[readonly] {
+    background-color: #f5f5f5;
+    cursor: not-allowed;
+}
+
+.link-cell {
+    max-width: 300px;
+    word-break: break-all;
+}
+
+.link-cell input {
+    font-size: 0.85rem;
+    font-family: monospace;
+}
+
+.subid-cell {
+    width: 100px;
+}
+
+.subid-cell input {
+    text-align: center;
+}
+
+.conversion-link-cell {
+    min-width: 300px;
+}
+
+.conversion-link-cell input {
+    font-family: monospace;
+    font-size: 0.85rem;
+}
+
+.reason-cell {
+    width: 200px;
+}
+
+.reason-cell select {
+    cursor: pointer;
+}
+
+.empty-table {
+    text-align: center;
+    padding: 40px 20px !important;
+    color: var(--text-light);
+    font-style: italic;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .control-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .control-group {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .load-btn,
+    .download-btn,
+    .upload-btn {
+        width: 100%;
+    }
+
+    .table-section {
+        padding: 15px;
+    }
+
+    .products-table {
+        font-size: 0.85rem;
+    }
+
+    .products-table th,
+    .products-table td {
+        padding: 8px;
+    }
+}
+

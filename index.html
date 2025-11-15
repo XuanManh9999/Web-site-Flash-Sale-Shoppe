@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flash Sale Shopee</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <header class="header">
+        <div class="container">
+            <h1 class="logo">
+                <span class="logo-icon">⚡️</span>
+                <span class="logo-text">Flash Sale Shopee</span>
+            </h1>
+        </div>
+    </header>
+
+    <main class="main">
+        <div class="container">
+            <!-- Maintenance Message -->
+            <div id="maintenanceMessage" class="maintenance-message hidden">
+                <div class="maintenance-content">
+                    <div class="maintenance-icon">🔧</div>
+                    <h2>Hệ thống đang bảo trì</h2>
+                    <p>Xin lỗi vì sự bất tiện. Hệ thống đang được bảo trì và sẽ sớm quay trở lại.</p>
+                    <p class="maintenance-subtitle">Vui lòng quay lại sau!</p>
+                </div>
+            </div>
+
+            <!-- Time Selection Section -->
+            <div class="time-selection-section">
+                <div class="time-select-wrapper">
+                    <label for="timeSelect">Chọn khung giờ:</label>
+                    <select id="timeSelect" class="time-select">
+                        <option value="">Đang tải...</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Price Filter Section -->
+            <div class="price-filter-section">
+                <div class="price-filters">
+                    <button class="price-filter-btn" data-filter="price_1k">≤ 1K</button>
+                    <button class="price-filter-btn" data-filter="price_9k">9K</button>
+                    <button class="price-filter-btn" data-filter="price_29k">≤ 29K</button>
+                    <button class="price-filter-btn" data-filter="discount_90">≥ 90% OFF</button>
+                    <button class="price-filter-btn" data-filter="stock_100">>= 100 SL</button>
+                </div>
+            </div>
+
+            <!-- Search and Filter Section -->
+            <div class="search-section">
+
+
+                <div class="filter-section">
+                    <button id="refreshBtn" class="refresh-btn">🔄 Làm mới</button>
+                </div>
+
+                <div id="resultsInfo" class="results-info"></div>
+            </div>
+
+            <!-- Loading Indicator -->
+            <div id="loading" class="loading hidden">
+                <div class="spinner"></div>
+                <p>Đang tải dữ liệu...</p>
+            </div>
+
+            <!-- Products Grid -->
+            <div id="productsContainer" class="products-grid"></div>
+
+            <!-- Pagination -->
+            <div id="pagination" class="pagination hidden"></div>
+
+            <!-- Empty State -->
+            <div id="emptyState" class="empty-state hidden">
+                <p>Không tìm thấy sản phẩm nào</p>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2025 Flash Sale Shopee</p>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
