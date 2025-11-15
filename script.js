@@ -509,6 +509,7 @@ function createProductCard(product) {
   )}" class="product-image" 
                      onerror="this.src='https://via.placeholder.com/300x300?text=No+Image'">
                 <div class="discount-badge-overlay">-${discountPercent}%</div>
+                <div class="flash-sale-badge">⚡ FLASH SALE</div>
                 ${
                   hasAffiliateLink
                     ? '<div class="affiliate-badge">🔗 Affiliate</div>'
@@ -519,14 +520,14 @@ function createProductCard(product) {
                 <h3 class="product-title">${escapeHtml(product.title)}</h3>
                 <div class="product-price-section">
                     <div class="price-row">
-                        <span class="current-price">${formattedPrice}đ</span>
-                        <span class="original-price">${formattedOriginalPrice}đ</span>
+                        <span class="current-price">${formattedPrice}₫</span>
+                        <span class="original-price">${formattedOriginalPrice}₫</span>
                     </div>
                 </div>
                 <div class="product-meta">
-                    <span class="amount-badge">Tổng ${
+                    <span class="amount-badge">Tổng: ${
                       product.amount || 0
-                    } sp</span>
+                    }</span>
                 </div>
             </div>
         </div>

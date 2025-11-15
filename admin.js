@@ -5,6 +5,7 @@ let currentTimeSlot = ""; // Current selected time slot
 let currentTimeSlotData = null; // Current time slot data: { linkMapping: {}, subIdMapping: {}, reasonMapping: {}, productCache: {} }
 let allTimeSlotData = {}; // All data: { "time": { linkMapping: {}, subIdMapping: {}, reasonMapping: {}, productCache: {} } }
 const API_BASE_URL = "http://localhost:3000/api"; // Node.js API base URL
+let isUpdatingSystemStatus = false; // Flag to prevent multiple simultaneous updates
 
 // Initialize on page load
 document.addEventListener("DOMContentLoaded", async () => {
@@ -32,55 +33,127 @@ document.addEventListener("DOMContentLoaded", async () => {
 // Load system status
 async function loadSystemStatus() {
   try {
+    const toggle = document.getElementById("systemStatusToggle");
+    const statusText = document.getElementById("systemStatusText");
+    
+    // Disable toggle while loading
+    if (toggle) toggle.disabled = true;
+    if (statusText) statusText.textContent = "Đang tải...";
+    
     const response = await fetch(`${API_BASE_URL}/system-status`);
     if (response.ok) {
       const data = await response.json();
       if (data.success) {
-        const toggle = document.getElementById("systemStatusToggle");
-        const statusText = document.getElementById("systemStatusText");
-        
-        toggle.checked = data.isActive;
-        statusText.textContent = data.isActive ? "Hoạt động" : "Bảo trì";
-        statusText.className = data.isActive ? "system-status-text active" : "system-status-text maintenance";
+        if (toggle) {
+          toggle.checked = data.isActive;
+          toggle.disabled = false;
+        }
+        if (statusText) {
+          statusText.textContent = data.isActive ? "Hoạt động" : "Bảo trì";
+          statusText.className = data.isActive ? "system-status-text active" : "system-status-text maintenance";
+        }
+      } else {
+        if (toggle) toggle.disabled = false;
+        if (statusText) statusText.textContent = "Lỗi tải trạng thái";
       }
+    } else {
+      if (toggle) toggle.disabled = false;
+      if (statusText) statusText.textContent = "Lỗi tải trạng thái";
     }
   } catch (error) {
     console.error("Error loading system status:", error);
-    document.getElementById("systemStatusText").textContent = "Lỗi tải trạng thái";
+    const toggle = document.getElementById("systemStatusToggle");
+    const statusText = document.getElementById("systemStatusText");
+    if (toggle) toggle.disabled = false;
+    if (statusText) statusText.textContent = "Lỗi tải trạng thái";
   }
 }
 
 // Handle system status change
 async function handleSystemStatusChange(e) {
+  // Prevent multiple simultaneous updates
+  if (isUpdatingSystemStatus) {
+    e.preventDefault();
+    return;
+  }
+
   const isActive = e.target.checked;
+  const toggle = e.target;
   const statusText = document.getElementById("systemStatusText");
   
+  // Disable toggle during update
+  isUpdatingSystemStatus = true;
+  toggle.disabled = true;
+  
+  if (statusText) {
+    statusText.textContent = "Đang cập nhật...";
+    statusText.className = "system-status-text";
+  }
+  
   try {
+    // Add timeout to prevent hanging
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
     const response = await fetch(`${API_BASE_URL}/system-status`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ isActive: isActive }),
+      signal: controller.signal
     });
+
+    clearTimeout(timeoutId);
 
     if (response.ok) {
       const data = await response.json();
       if (data.success) {
-        statusText.textContent = isActive ? "Hoạt động" : "Bảo trì";
-        statusText.className = isActive ? "system-status-text active" : "system-status-text maintenance";
-        alert(`Hệ thống đã ${isActive ? "bật" : "tắt"} thành công!`);
+        if (statusText) {
+          statusText.textContent = isActive ? "Hoạt động" : "Bảo trì";
+          statusText.className = isActive ? "system-status-text active" : "system-status-text maintenance";
+        }
+        console.log(`✅ System status updated to: ${isActive ? "Active" : "Maintenance"}`);
+        // Show success message without alert (less intrusive)
+        // alert(`Hệ thống đã ${isActive ? "bật" : "tắt"} thành công!`);
+      } else {
+        // Revert toggle if update failed
+        toggle.checked = !isActive;
+        if (statusText) {
+          statusText.textContent = "Lỗi cập nhật";
+          statusText.className = "system-status-text";
+        }
+        alert("Lỗi khi cập nhật trạng thái hệ thống");
       }
     } else {
       // Revert toggle if update failed
-      e.target.checked = !isActive;
+      toggle.checked = !isActive;
+      if (statusText) {
+        statusText.textContent = "Lỗi cập nhật";
+        statusText.className = "system-status-text";
+      }
       alert("Lỗi khi cập nhật trạng thái hệ thống");
     }
   } catch (error) {
     console.error("Error updating system status:", error);
+    
     // Revert toggle if update failed
-    e.target.checked = !isActive;
-    alert("Lỗi khi cập nhật trạng thái hệ thống: " + error.message);
+    toggle.checked = !isActive;
+    
+    if (statusText) {
+      if (error.name === 'AbortError') {
+        statusText.textContent = "Timeout - Vui lòng thử lại";
+      } else {
+        statusText.textContent = "Lỗi cập nhật";
+      }
+      statusText.className = "system-status-text";
+    }
+    
+    alert("Lỗi khi cập nhật trạng thái hệ thống: " + (error.name === 'AbortError' ? 'Timeout' : error.message));
+  } finally {
+    // Re-enable toggle after update completes
+    isUpdatingSystemStatus = false;
+    toggle.disabled = false;
   }
 }
 
