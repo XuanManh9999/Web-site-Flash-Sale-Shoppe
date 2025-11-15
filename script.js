@@ -135,14 +135,19 @@ async function loadTimeButtons() {
       );
 
       // Get list of time slots from API
-      const apiTimeSlots = timeButtons.map(tb => tb.time);
-      
+      const apiTimeSlots = timeButtons.map((tb) => tb.time);
+
       // Find time slots in DB but not in API (need to be deleted)
-      const timeSlotsToDelete = dbTimeSlots.filter(timeSlot => !apiTimeSlots.includes(timeSlot));
-      
+      const timeSlotsToDelete = dbTimeSlots.filter(
+        (timeSlot) => !apiTimeSlots.includes(timeSlot)
+      );
+
       // Clean up time slots that no longer exist in API
       if (timeSlotsToDelete.length > 0) {
-        console.log(`Cleaning up ${timeSlotsToDelete.length} time slots that no longer exist in API:`, timeSlotsToDelete);
+        console.log(
+          `Cleaning up ${timeSlotsToDelete.length} time slots that no longer exist in API:`,
+          timeSlotsToDelete
+        );
         await cleanupTimeSlots(timeSlotsToDelete);
       }
 
@@ -804,7 +809,8 @@ async function scanForNewLinks() {
 // Global variable to cache data
 let adminDataCache = null;
 const CACHE_DURATION = 60000; // 1 minute cache
-const API_BASE_URL = "http://localhost:3000/api"; // Node.js API base URL
+// const API_BASE_URL = "http://localhost:3000/api"; // Node.js API base URL
+const API_BASE_URL = "https://buichung.vn/api"; // Node.js API base URL
 
 // Load all data from API
 async function loadAllDataFromJSON(forceReload = false) {
@@ -1077,12 +1083,12 @@ function hideMaintenanceMessage() {
   const searchSection = document.querySelector(".search-section");
   const productsContainer = document.getElementById("productsContainer");
   const pagination = document.getElementById("pagination");
-  
+
   // Hide maintenance message
   if (maintenanceMsg) {
     maintenanceMsg.classList.add("hidden");
   }
-  
+
   // Show all other sections
   if (timeSelection) timeSelection.style.display = "";
   if (priceFilter) priceFilter.style.display = "";
@@ -1096,10 +1102,13 @@ async function cleanupTimeSlots(timeSlotsToDelete) {
   try {
     for (const timeSlot of timeSlotsToDelete) {
       try {
-        const response = await fetch(`${API_BASE_URL}/data/${encodeURIComponent(timeSlot)}`, {
-          method: 'DELETE'
-        });
-        
+        const response = await fetch(
+          `${API_BASE_URL}/data/${encodeURIComponent(timeSlot)}`,
+          {
+            method: "DELETE",
+          }
+        );
+
         if (response.ok) {
           console.log(`✅ Deleted time slot: ${timeSlot}`);
         } else {
@@ -1109,9 +1118,11 @@ async function cleanupTimeSlots(timeSlotsToDelete) {
         console.error(`❌ Error deleting time slot ${timeSlot}:`, error);
       }
     }
-    
+
     if (timeSlotsToDelete.length > 0) {
-      console.log(`✅ Cleanup completed: ${timeSlotsToDelete.length} time slots removed from DB`);
+      console.log(
+        `✅ Cleanup completed: ${timeSlotsToDelete.length} time slots removed from DB`
+      );
     }
   } catch (error) {
     console.error("❌ Error during cleanup:", error);

@@ -4,30 +4,43 @@ let productsData = [];
 let currentTimeSlot = ""; // Current selected time slot
 let currentTimeSlotData = null; // Current time slot data: { linkMapping: {}, subIdMapping: {}, reasonMapping: {}, productCache: {} }
 let allTimeSlotData = {}; // All data: { "time": { linkMapping: {}, subIdMapping: {}, reasonMapping: {}, productCache: {} } }
-const API_BASE_URL = "http://localhost:3000/api"; // Node.js API base URL
+// const API_BASE_URL = "http://localhost:3000/api"; // Node.js API base URL
+const API_BASE_URL = "https://buichung.vn/api"; // Node.js API base URL
 let isUpdatingSystemStatus = false; // Flag to prevent multiple simultaneous updates
 
 // Initialize on page load
 document.addEventListener("DOMContentLoaded", async () => {
   // Load data from data.json first
   await loadDataFromJSON();
-  
+
   // Load time buttons
   await loadTimeButtons();
-  
+
   // Load system status
   await loadSystemStatus();
 
   // Event listeners
-  document.getElementById("timeSelectAdmin").addEventListener("change", handleTimeSlotChange);
-  document.getElementById("clearTimeBtn").addEventListener("click", handleClearTimeSlot);
-  document.getElementById("downloadBtn").addEventListener("click", handleDownloadExcel);
+  document
+    .getElementById("timeSelectAdmin")
+    .addEventListener("change", handleTimeSlotChange);
+  document
+    .getElementById("clearTimeBtn")
+    .addEventListener("click", handleClearTimeSlot);
+  document
+    .getElementById("downloadBtn")
+    .addEventListener("click", handleDownloadExcel);
   document.getElementById("uploadBtn").addEventListener("click", () => {
     document.getElementById("uploadFile").click();
   });
-  document.getElementById("uploadFile").addEventListener("change", handleUploadExcel);
-  document.getElementById("clearAllBtn").addEventListener("click", handleClearAll);
-  document.getElementById("systemStatusToggle").addEventListener("change", handleSystemStatusChange);
+  document
+    .getElementById("uploadFile")
+    .addEventListener("change", handleUploadExcel);
+  document
+    .getElementById("clearAllBtn")
+    .addEventListener("click", handleClearAll);
+  document
+    .getElementById("systemStatusToggle")
+    .addEventListener("change", handleSystemStatusChange);
 });
 
 // Load system status
@@ -35,11 +48,11 @@ async function loadSystemStatus() {
   try {
     const toggle = document.getElementById("systemStatusToggle");
     const statusText = document.getElementById("systemStatusText");
-    
+
     // Disable toggle while loading
     if (toggle) toggle.disabled = true;
     if (statusText) statusText.textContent = "Đang tải...";
-    
+
     const response = await fetch(`${API_BASE_URL}/system-status`);
     if (response.ok) {
       const data = await response.json();
@@ -50,7 +63,9 @@ async function loadSystemStatus() {
         }
         if (statusText) {
           statusText.textContent = data.isActive ? "Hoạt động" : "Bảo trì";
-          statusText.className = data.isActive ? "system-status-text active" : "system-status-text maintenance";
+          statusText.className = data.isActive
+            ? "system-status-text active"
+            : "system-status-text maintenance";
         }
       } else {
         if (toggle) toggle.disabled = false;
@@ -80,28 +95,28 @@ async function handleSystemStatusChange(e) {
   const isActive = e.target.checked;
   const toggle = e.target;
   const statusText = document.getElementById("systemStatusText");
-  
+
   // Disable toggle during update
   isUpdatingSystemStatus = true;
   toggle.disabled = true;
-  
+
   if (statusText) {
     statusText.textContent = "Đang cập nhật...";
     statusText.className = "system-status-text";
   }
-  
+
   try {
     // Add timeout to prevent hanging
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-    
+
     const response = await fetch(`${API_BASE_URL}/system-status`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ isActive: isActive }),
-      signal: controller.signal
+      signal: controller.signal,
     });
 
     clearTimeout(timeoutId);
@@ -111,9 +126,13 @@ async function handleSystemStatusChange(e) {
       if (data.success) {
         if (statusText) {
           statusText.textContent = isActive ? "Hoạt động" : "Bảo trì";
-          statusText.className = isActive ? "system-status-text active" : "system-status-text maintenance";
+          statusText.className = isActive
+            ? "system-status-text active"
+            : "system-status-text maintenance";
         }
-        console.log(`✅ System status updated to: ${isActive ? "Active" : "Maintenance"}`);
+        console.log(
+          `✅ System status updated to: ${isActive ? "Active" : "Maintenance"}`
+        );
         // Show success message without alert (less intrusive)
         // alert(`Hệ thống đã ${isActive ? "bật" : "tắt"} thành công!`);
       } else {
@@ -136,20 +155,23 @@ async function handleSystemStatusChange(e) {
     }
   } catch (error) {
     console.error("Error updating system status:", error);
-    
+
     // Revert toggle if update failed
     toggle.checked = !isActive;
-    
+
     if (statusText) {
-      if (error.name === 'AbortError') {
+      if (error.name === "AbortError") {
         statusText.textContent = "Timeout - Vui lòng thử lại";
       } else {
         statusText.textContent = "Lỗi cập nhật";
       }
       statusText.className = "system-status-text";
     }
-    
-    alert("Lỗi khi cập nhật trạng thái hệ thống: " + (error.name === 'AbortError' ? 'Timeout' : error.message));
+
+    alert(
+      "Lỗi khi cập nhật trạng thái hệ thống: " +
+        (error.name === "AbortError" ? "Timeout" : error.message)
+    );
   } finally {
     // Re-enable toggle after update completes
     isUpdatingSystemStatus = false;
@@ -167,8 +189,8 @@ async function loadTimeButtons() {
       timeButtons = data.data.sort((a, b) => (a.order || 0) - (b.order || 0));
 
       // Get list of time slots from API
-      const apiTimeSlots = timeButtons.map(tb => tb.time);
-      
+      const apiTimeSlots = timeButtons.map((tb) => tb.time);
+
       // Get time slots that have data in DB
       let dbTimeSlots = [];
       try {
@@ -182,13 +204,18 @@ async function loadTimeButtons() {
       } catch (e) {
         console.log("Could not load time slots from DB:", e);
       }
-      
+
       // Find time slots in DB but not in API (need to be deleted)
-      const timeSlotsToDelete = dbTimeSlots.filter(timeSlot => !apiTimeSlots.includes(timeSlot));
-      
+      const timeSlotsToDelete = dbTimeSlots.filter(
+        (timeSlot) => !apiTimeSlots.includes(timeSlot)
+      );
+
       // Clean up time slots that no longer exist in API
       if (timeSlotsToDelete.length > 0) {
-        console.log(`Cleaning up ${timeSlotsToDelete.length} time slots that no longer exist in API:`, timeSlotsToDelete);
+        console.log(
+          `Cleaning up ${timeSlotsToDelete.length} time slots that no longer exist in API:`,
+          timeSlotsToDelete
+        );
         await cleanupTimeSlots(timeSlotsToDelete);
       }
 
@@ -213,10 +240,13 @@ async function cleanupTimeSlots(timeSlotsToDelete) {
   try {
     for (const timeSlot of timeSlotsToDelete) {
       try {
-        const response = await fetch(`${API_BASE_URL}/data/${encodeURIComponent(timeSlot)}`, {
-          method: 'DELETE'
-        });
-        
+        const response = await fetch(
+          `${API_BASE_URL}/data/${encodeURIComponent(timeSlot)}`,
+          {
+            method: "DELETE",
+          }
+        );
+
         if (response.ok) {
           console.log(`✅ Deleted time slot: ${timeSlot}`);
         } else {
@@ -226,10 +256,14 @@ async function cleanupTimeSlots(timeSlotsToDelete) {
         console.error(`❌ Error deleting time slot ${timeSlot}:`, error);
       }
     }
-    
+
     if (timeSlotsToDelete.length > 0) {
-      console.log(`✅ Cleanup completed: ${timeSlotsToDelete.length} time slots removed from DB`);
-      alert(`Đã xóa ${timeSlotsToDelete.length} khung giờ không còn tồn tại trong hệ thống khỏi database.`);
+      console.log(
+        `✅ Cleanup completed: ${timeSlotsToDelete.length} time slots removed from DB`
+      );
+      alert(
+        `Đã xóa ${timeSlotsToDelete.length} khung giờ không còn tồn tại trong hệ thống khỏi database.`
+      );
     }
   } catch (error) {
     console.error("❌ Error during cleanup:", error);
@@ -248,10 +282,10 @@ async function handleTimeSlotChange(e) {
   }
 
   currentTimeSlot = selectedTime;
-  
+
   // Load mapping data from API for this time slot
   await loadTimeSlotDataFromJSON(selectedTime);
-  
+
   // Load products from API
   await loadProductsForTimeSlot(selectedTime);
 }
@@ -262,7 +296,7 @@ async function loadDataFromJSON() {
     const response = await fetch(`${API_BASE_URL}/data`);
     if (response.ok) {
       const data = await response.json();
-      if (data && typeof data === 'object') {
+      if (data && typeof data === "object") {
         allTimeSlotData = data;
         console.log("Data loaded from API:", allTimeSlotData);
       }
@@ -277,7 +311,9 @@ async function loadDataFromJSON() {
 async function loadTimeSlotDataFromJSON(timeSlot) {
   try {
     // Try to load from API first
-    const response = await fetch(`${API_BASE_URL}/data/${encodeURIComponent(timeSlot)}`);
+    const response = await fetch(
+      `${API_BASE_URL}/data/${encodeURIComponent(timeSlot)}`
+    );
     if (response.ok) {
       const data = await response.json();
       currentTimeSlotData = data;
@@ -287,7 +323,9 @@ async function loadTimeSlotDataFromJSON(timeSlot) {
       return;
     }
   } catch (e) {
-    console.log(`Could not load data for ${timeSlot} from API, using local data`);
+    console.log(
+      `Could not load data for ${timeSlot} from API, using local data`
+    );
   }
 
   // Fallback to local data
@@ -311,7 +349,9 @@ async function loadProductsForTimeSlot(timeSlot) {
 
   try {
     // Build API URL with time filter
-    const apiUrl = `https://linhkaadz.com/api/aff-shopee/products?page=1&limit=10000&time=${encodeURIComponent(timeSlot)}`;
+    const apiUrl = `https://linhkaadz.com/api/aff-shopee/products?page=1&limit=10000&time=${encodeURIComponent(
+      timeSlot
+    )}`;
 
     const response = await fetch(apiUrl);
     const data = await response.json();
@@ -367,15 +407,22 @@ async function handleClearTimeSlot() {
     return;
   }
 
-  if (!confirm(`Bạn có chắc muốn xóa dữ liệu đã map của khung giờ "${selectedTime}"?`)) {
+  if (
+    !confirm(
+      `Bạn có chắc muốn xóa dữ liệu đã map của khung giờ "${selectedTime}"?`
+    )
+  ) {
     return;
   }
 
   try {
     // Delete from database
-    const response = await fetch(`${API_BASE_URL}/data/${encodeURIComponent(selectedTime)}`, {
-      method: 'DELETE',
-    });
+    const response = await fetch(
+      `${API_BASE_URL}/data/${encodeURIComponent(selectedTime)}`,
+      {
+        method: "DELETE",
+      }
+    );
 
     if (response.ok) {
       // Clear local data
@@ -385,7 +432,7 @@ async function handleClearTimeSlot() {
         reasonMapping: {},
         productCache: {},
       };
-      
+
       currentTimeSlotData = allTimeSlotData[selectedTime];
 
       // Reload products from API
@@ -410,7 +457,7 @@ async function handleClearAll() {
   try {
     // Delete all from database
     const response = await fetch(`${API_BASE_URL}/data`, {
-      method: 'DELETE',
+      method: "DELETE",
     });
 
     if (response.ok) {
@@ -464,11 +511,19 @@ function fillProductsTable(timeSlotData = null) {
     .map((product, index) => {
       const originalLink = product.link || "";
       const conversionLink = linkMapping[originalLink] || "";
-      const subIds = subIdMapping[originalLink] || { sub1: "", sub2: "", sub3: "", sub4: "", sub5: "" };
+      const subIds = subIdMapping[originalLink] || {
+        sub1: "",
+        sub2: "",
+        sub3: "",
+        sub4: "",
+        sub5: "",
+      };
       const reason = reasonMapping[originalLink] || "";
 
       return `
-        <tr data-index="${index}" data-original-link="${escapeHtml(originalLink)}">
+        <tr data-index="${index}" data-original-link="${escapeHtml(
+        originalLink
+      )}">
           <td class="link-cell">
             <input type="text" 
                    value="${escapeHtml(originalLink)}" 
@@ -524,13 +579,25 @@ function fillProductsTable(timeSlotData = null) {
                    data-original-link="${escapeHtml(originalLink)}">
           </td>
           <td class="reason-cell">
-            <select class="reason-select" data-original-link="${escapeHtml(originalLink)}">
+            <select class="reason-select" data-original-link="${escapeHtml(
+              originalLink
+            )}">
               <option value="">-- Chọn --</option>
-              <option value="Thành công" ${reason === "Thành công" ? "selected" : ""}>Thành công</option>
-              <option value="Link không hợp lệ" ${reason === "Link không hợp lệ" ? "selected" : ""}>Link không hợp lệ</option>
-              <option value="Sản phẩm hết hàng" ${reason === "Sản phẩm hết hàng" ? "selected" : ""}>Sản phẩm hết hàng</option>
-              <option value="Link bị lỗi" ${reason === "Link bị lỗi" ? "selected" : ""}>Link bị lỗi</option>
-              <option value="Khác" ${reason === "Khác" ? "selected" : ""}>Khác</option>
+              <option value="Thành công" ${
+                reason === "Thành công" ? "selected" : ""
+              }>Thành công</option>
+              <option value="Link không hợp lệ" ${
+                reason === "Link không hợp lệ" ? "selected" : ""
+              }>Link không hợp lệ</option>
+              <option value="Sản phẩm hết hàng" ${
+                reason === "Sản phẩm hết hàng" ? "selected" : ""
+              }>Sản phẩm hết hàng</option>
+              <option value="Link bị lỗi" ${
+                reason === "Link bị lỗi" ? "selected" : ""
+              }>Link bị lỗi</option>
+              <option value="Khác" ${
+                reason === "Khác" ? "selected" : ""
+              }>Khác</option>
             </select>
           </td>
         </tr>
@@ -665,7 +732,7 @@ function handleDownloadExcel() {
         "Sub id4": sub4,
         "Sub id5": sub5,
         // Store product data as JSON in a hidden column (we'll use it when loading back)
-        "_productData": JSON.stringify(cachedProduct),
+        _productData: JSON.stringify(cachedProduct),
       };
     });
 
@@ -714,7 +781,10 @@ function handleDownloadExcel() {
     XLSX.utils.book_append_sheet(wb, ws, "Sản phẩm");
 
     // Generate filename with timestamp
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, -5);
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")
+      .slice(0, -5);
     const filename = `san-pham-${timestamp}.xlsx`;
 
     // Download
@@ -831,7 +901,9 @@ async function handleUploadExcel(e) {
       // Save to database
       await saveTimeSlotDataToJSON();
 
-      alert(`Đã tải lên ${jsonData.length} sản phẩm thành công cho khung giờ "${selectedTime}"! Dữ liệu đã được lưu vào database.`);
+      alert(
+        `Đã tải lên ${jsonData.length} sản phẩm thành công cho khung giờ "${selectedTime}"! Dữ liệu đã được lưu vào database.`
+      );
     } catch (error) {
       console.error("Error reading Excel file:", error);
       alert("Lỗi khi đọc file Excel: " + error.message);
@@ -863,12 +935,12 @@ async function saveTimeSlotDataToJSON() {
   try {
     // Update allTimeSlotData with current time slot data
     allTimeSlotData[currentTimeSlot] = currentTimeSlotData;
-    
+
     // Save to API
     const response = await fetch(`${API_BASE_URL}/data`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         timeSlot: currentTimeSlot,
@@ -880,7 +952,7 @@ async function saveTimeSlotDataToJSON() {
       const result = await response.json();
       console.log(`Data saved for ${currentTimeSlot} to database:`, result);
     } else {
-      console.error('Failed to save data to API');
+      console.error("Failed to save data to API");
     }
   } catch (e) {
     console.error("Error saving data to API:", e);
@@ -890,12 +962,12 @@ async function saveTimeSlotDataToJSON() {
 // Helper function to download JSON file
 function downloadJSONFile(jsonString, fileName) {
   try {
-    const blob = new Blob([jsonString], { type: 'application/json' });
+    const blob = new Blob([jsonString], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
     a.download = fileName;
-    a.style.display = 'none';
+    a.style.display = "none";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -912,19 +984,18 @@ function handleDownloadJSON() {
     if (currentTimeSlot && currentTimeSlotData) {
       allTimeSlotData[currentTimeSlot] = currentTimeSlotData;
     }
-    
+
     const jsonString = JSON.stringify(allTimeSlotData, null, 2);
-    
+
     // Download JSON file as backup
-    downloadJSONFile(jsonString, 'data-backup.json');
-    
+    downloadJSONFile(jsonString, "data-backup.json");
+
     alert(`Đã tải xuống file backup thành công!`);
   } catch (e) {
     console.error("Error downloading JSON:", e);
     alert("Lỗi khi tải xuống JSON: " + e.message);
   }
 }
-
 
 // Show/hide loading
 function showLoading(show) {
