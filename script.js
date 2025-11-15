@@ -530,7 +530,7 @@ function createProductCard(product) {
                     </div>
                 </div>
                 <div class="product-meta">
-                    <span class="amount-badge">Tổng: ${
+                    <span class="amount-badge">Số lượng: ${
                       product.amount || 0
                     }</span>
                 </div>
@@ -809,8 +809,7 @@ async function scanForNewLinks() {
 // Global variable to cache data
 let adminDataCache = null;
 const CACHE_DURATION = 60000; // 1 minute cache
-// const API_BASE_URL = "http://localhost:3000/api"; // Node.js API base URL
-const API_BASE_URL = "https://buichung.vn/api"; // Node.js API base URL
+const API_BASE_URL = "http://buichung.vn/api"; // Node.js API base URL
 
 // Load all data from API
 async function loadAllDataFromJSON(forceReload = false) {
@@ -1056,6 +1055,7 @@ async function checkSystemStatus() {
 // Show maintenance message
 function showMaintenanceMessage() {
   const maintenanceMsg = document.getElementById("maintenanceMessage");
+  const groupLinksSection = document.querySelector(".group-links-section");
   const timeSelection = document.querySelector(".time-selection-section");
   const priceFilter = document.querySelector(".price-filter-section");
   const searchSection = document.querySelector(".search-section");
@@ -1068,6 +1068,7 @@ function showMaintenanceMessage() {
   }
 
   // Hide all other sections
+  if (groupLinksSection) groupLinksSection.style.display = "none";
   if (timeSelection) timeSelection.style.display = "none";
   if (priceFilter) priceFilter.style.display = "none";
   if (searchSection) searchSection.style.display = "none";
@@ -1078,6 +1079,7 @@ function showMaintenanceMessage() {
 // Hide maintenance message
 function hideMaintenanceMessage() {
   const maintenanceMsg = document.getElementById("maintenanceMessage");
+  const groupLinksSection = document.querySelector(".group-links-section");
   const timeSelection = document.querySelector(".time-selection-section");
   const priceFilter = document.querySelector(".price-filter-section");
   const searchSection = document.querySelector(".search-section");
@@ -1090,6 +1092,7 @@ function hideMaintenanceMessage() {
   }
 
   // Show all other sections
+  if (groupLinksSection) groupLinksSection.style.display = "";
   if (timeSelection) timeSelection.style.display = "";
   if (priceFilter) priceFilter.style.display = "";
   if (searchSection) searchSection.style.display = "";
