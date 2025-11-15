@@ -809,7 +809,7 @@ async function scanForNewLinks() {
 // Global variable to cache data
 let adminDataCache = null;
 const CACHE_DURATION = 60000; // 1 minute cache
-const API_BASE_URL = "http://buichung.vn/api"; // Node.js API base URL
+const API_BASE_URL = "https://buichung.vn/api"; // Node.js API base URL
 
 // Load all data from API
 async function loadAllDataFromJSON(forceReload = false) {
