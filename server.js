@@ -334,8 +334,8 @@ app.post("/api/system-status", (req, res) => {
 });
 
 // Start server
-app.listen(PORT, () => {
-  console.log(`Server is running on http://g:${PORT}`);
+app.listen(PORT, "127.0.0.1", () => {
+  console.log(`Server is running on http://103.200.23.43:${PORT}`);
 });
 
 // Graceful shutdown
