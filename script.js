@@ -107,6 +107,39 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
+// Check if current page is admin page
+function isAdminPage() {
+  // Check if we're on admin.html (not index.html)
+  const path = window.location.pathname.toLowerCase();
+  const urlParams = new URLSearchParams(window.location.search);
+  // If path ends with admin.html or contains /admin.html, it's admin page
+  // Also check URL parameter for admin mode
+  return (
+    path.endsWith("admin.html") ||
+    path.includes("/admin.html") ||
+    urlParams.get("admin") === "true"
+  );
+}
+
+// Check if time slot has custom links (linkMapping)
+async function hasCustomLinks(timeSlot) {
+  try {
+    const timeSlotData = await loadTimeSlotDataFromJSON(timeSlot, false);
+    if (timeSlotData && timeSlotData.linkMapping) {
+      // Check if linkMapping has any entries
+      const linkMapping = timeSlotData.linkMapping;
+      return (
+        linkMapping &&
+        typeof linkMapping === "object" &&
+        Object.keys(linkMapping).length > 0
+      );
+    }
+  } catch (e) {
+    console.log(`Error checking custom links for ${timeSlot}:`, e);
+  }
+  return false;
+}
+
 // Load time buttons from API and map with DB data
 async function loadTimeButtons() {
   try {
@@ -151,26 +184,66 @@ async function loadTimeButtons() {
         await cleanupTimeSlots(timeSlotsToDelete);
       }
 
+      // Check if user is admin
+      const isAdmin = isAdminPage();
+
+      // Load all data to check for custom links
+      const allData = await loadAllDataFromJSON(false);
+
       // Render time select
       const select = document.getElementById("timeSelect");
       const previousValue = select.value; // Save current selection
-      select.innerHTML = '<option value="">Tất cả khung giờ</option>';
+      select.innerHTML = "";
 
-      timeButtons.forEach((timeBtn) => {
-        const option = document.createElement("option");
-        option.value = timeBtn.time;
+      // Only show "All time slots" option for admin users
+      if (isAdmin) {
+        const allOption = document.createElement("option");
+        allOption.value = "";
+        allOption.textContent = "Tất cả khung giờ";
+        select.appendChild(allOption);
+      }
+
+      // Filter time buttons based on admin status and custom links
+      const visibleTimeButtons = [];
+
+      for (const timeBtn of timeButtons) {
         // Mark if has data in DB
         const hasData = dbTimeSlots.includes(timeBtn.time);
+
+        // If not admin, check if time slot has custom links
+        if (!isAdmin) {
+          const hasLinks =
+            allData &&
+            allData[timeBtn.time] &&
+            allData[timeBtn.time].linkMapping &&
+            typeof allData[timeBtn.time].linkMapping === "object" &&
+            Object.keys(allData[timeBtn.time].linkMapping).length > 0;
+
+          // Only show time slots that have custom links
+          if (!hasLinks) {
+            console.log(
+              `Hiding time slot ${timeBtn.time} - no custom links yet`
+            );
+            continue; // Skip this time slot for non-admin users
+          }
+        }
+
+        // Add to visible list
+        visibleTimeButtons.push(timeBtn);
+
+        const option = document.createElement("option");
+        option.value = timeBtn.time;
         option.textContent = hasData
           ? `${timeBtn.label || timeBtn.name} ✓`
           : timeBtn.label || timeBtn.name;
         select.appendChild(option);
-      });
+      }
 
       // Restore previous selection if it still exists, otherwise auto-select
+      // Check if previous value is in visible time buttons
       if (
         previousValue &&
-        timeButtons.find((tb) => tb.time === previousValue)
+        visibleTimeButtons.find((tb) => tb.time === previousValue)
       ) {
         currentTime = previousValue;
         select.value = currentTime;
@@ -179,8 +252,8 @@ async function loadTimeButtons() {
           select.dispatchEvent(new Event("change", { bubbles: true }));
         }, 100);
       } else {
-        // Auto-select first active time slot
-        const activeTime = timeButtons.find((tb) => tb.isActive);
+        // Auto-select first active time slot from visible buttons
+        const activeTime = visibleTimeButtons.find((tb) => tb.isActive);
         if (activeTime) {
           currentTime = activeTime.time;
           select.value = currentTime;
@@ -188,20 +261,32 @@ async function loadTimeButtons() {
           setTimeout(() => {
             select.dispatchEvent(new Event("change", { bubbles: true }));
           }, 100);
-        } else if (timeButtons.length > 0) {
-          currentTime = timeButtons[0].time;
+        } else if (visibleTimeButtons.length > 0) {
+          currentTime = visibleTimeButtons[0].time;
           select.value = currentTime;
           // Trigger change event to load products
           setTimeout(() => {
             select.dispatchEvent(new Event("change", { bubbles: true }));
           }, 100);
         } else {
-          // No time slot selected, load all products
-          currentTime = "";
-          select.value = "";
-          setTimeout(() => {
-            loadProducts(true);
-          }, 100);
+          // No visible time slot
+          if (isAdmin) {
+            // Admin can see all products
+            currentTime = "";
+            select.value = "";
+            setTimeout(() => {
+              loadProducts(true);
+            }, 100);
+          } else {
+            // Non-admin: no time slots with custom links available
+            currentTime = "";
+            select.value = "";
+            allProducts = [];
+            filteredProducts = [];
+            showEmptyState();
+            renderProducts();
+            renderPagination();
+          }
         }
       }
     }
@@ -216,6 +301,67 @@ async function loadProducts(forceReloadData = false) {
   hideEmptyState();
 
   try {
+    // Check if user is admin
+    const isAdmin = isAdminPage();
+
+    // If not admin and a specific time slot is selected, check if it has custom links
+    if (!isAdmin && currentTime) {
+      const allData = await loadAllDataFromJSON(forceReloadData);
+      const hasLinks =
+        allData &&
+        allData[currentTime] &&
+        allData[currentTime].linkMapping &&
+        typeof allData[currentTime].linkMapping === "object" &&
+        Object.keys(allData[currentTime].linkMapping).length > 0;
+
+      if (!hasLinks) {
+        console.log(
+          `⛔ Time slot ${currentTime} has no custom links - hiding products for non-admin user`
+        );
+        allProducts = [];
+        filteredProducts = [];
+        showEmptyState();
+        showLoading(false);
+        renderProducts();
+        renderPagination();
+        return;
+      }
+    }
+
+    // If not admin and "all time slots" is selected, filter to only show products from time slots with custom links
+    if (!isAdmin && !currentTime) {
+      const allData = await loadAllDataFromJSON(forceReloadData);
+      // Get list of time slots that have custom links
+      const timeSlotsWithLinks = [];
+      if (allData) {
+        for (const timeSlot in allData) {
+          const timeSlotData = allData[timeSlot];
+          if (
+            timeSlotData &&
+            timeSlotData.linkMapping &&
+            typeof timeSlotData.linkMapping === "object" &&
+            Object.keys(timeSlotData.linkMapping).length > 0
+          ) {
+            timeSlotsWithLinks.push(timeSlot);
+          }
+        }
+      }
+
+      // If no time slots have custom links, show empty state
+      if (timeSlotsWithLinks.length === 0) {
+        console.log(
+          "⛔ No time slots with custom links available for non-admin user"
+        );
+        allProducts = [];
+        filteredProducts = [];
+        showEmptyState();
+        showLoading(false);
+        renderProducts();
+        renderPagination();
+        return;
+      }
+    }
+
     let productsFromDB = null;
     let hasDataInDB = false;
 
