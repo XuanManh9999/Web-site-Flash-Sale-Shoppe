@@ -503,20 +503,6 @@ body {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
-.flash-sale-badge {
-    position: absolute;
-    top: 50px;
-    right: 8px;
-    background: #ff4444;
-    color: white;
-    padding: 6px 12px;
-    border-radius: 6px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    z-index: 3;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-    letter-spacing: 0.5px;
-}
 
 .affiliate-badge {
     position: absolute;
@@ -834,13 +820,6 @@ body {
         font-weight: 700;
     }
 
-    .flash-sale-badge {
-        font-size: 0.6rem;
-        padding: 2px 6px;
-        top: 32px;
-        right: 6px;
-        font-weight: 700;
-    }
 
     .pagination {
         gap: 5px;
@@ -950,13 +929,6 @@ body {
         font-weight: 700;
     }
 
-    .flash-sale-badge {
-        font-size: 0.55rem;
-        padding: 2px 5px;
-        top: 28px;
-        right: 4px;
-        font-weight: 700;
-    }
 
     .product-meta {
         font-size: 0.7rem;

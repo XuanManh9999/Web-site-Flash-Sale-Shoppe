@@ -660,7 +660,6 @@ function createProductCard(product) {
   )}" class="product-image" 
                      onerror="this.src='https://via.placeholder.com/300x300?text=No+Image'">
                 <div class="discount-badge-overlay">-${discountPercent}%</div>
-                <div class="flash-sale-badge">⚡ FLASH SALE</div>
                 ${
                   hasAffiliateLink
                     ? '<div class="affiliate-badge">🔗 Affiliate</div>'
@@ -676,9 +675,9 @@ function createProductCard(product) {
                     </div>
                 </div>
                 <div class="product-meta">
-                    <span class="amount-badge">Số lượng: ${
+                    <span class="amount-badge">SL: ${
                       product.amount || 0
-                    }</span>
+                    } Deal</span>
                 </div>
             </div>
         </div>

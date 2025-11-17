@@ -4,7 +4,7 @@ let productsData = [];
 let currentTimeSlot = ""; // Current selected time slot
 let currentTimeSlotData = null; // Current time slot data: { linkMapping: {}, subIdMapping: {}, reasonMapping: {}, productCache: {} }
 let allTimeSlotData = {}; // All data: { "time": { linkMapping: {}, subIdMapping: {}, reasonMapping: {}, productCache: {} } }
-const API_BASE_URL = "https://buichung.vn/api"; // Node.js API base URL
+const API_BASE_URL = "https://buichung.vn/api"; // Node.js API base URL https://buichung.vn/api
 let isUpdatingSystemStatus = false; // Flag to prevent multiple simultaneous updates
 
 // Initialize on page load
