@@ -537,6 +537,16 @@ async function handleTimeChange(e) {
   await loadProducts(true);
 }
 
+// Shuffle array using Fisher-Yates algorithm
+function shuffleArray(array) {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
 // Apply search and other filters
 function applyFilters() {
   filteredProducts = [...allProducts];
@@ -572,6 +582,9 @@ function applyFilters() {
       }
     });
   }
+
+  // Randomize product order
+  filteredProducts = shuffleArray(filteredProducts);
 
   // Reset to first page when filtering
   currentPage = 1;
