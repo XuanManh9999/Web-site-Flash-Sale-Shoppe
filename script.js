@@ -12,6 +12,8 @@ let linkMappingCache = {}; // Cache for affiliate links: { originalLink: { longL
 let lastScanTime = null; // Last time we scanned for new links
 let scanInterval = null; // Interval for auto-scanning
 
+// API base URL for server (4anm.top API is now proxied through server)
+
 // Initialize on page load
 document.addEventListener("DOMContentLoaded", () => {
   // Get aff_id from URL parameter
@@ -105,6 +107,9 @@ document.addEventListener("DOMContentLoaded", () => {
       renderPagination();
     });
   });
+
+  // Set default filter to 1k on initial load (will be applied after products load)
+  // This is handled in loadTimeButtons after time selection
 });
 
 // Check if current page is admin page
@@ -140,14 +145,29 @@ async function hasCustomLinks(timeSlot) {
   return false;
 }
 
-// Load time buttons from API and map with DB data
+// API calls are now proxied through server - no need for client-side token management
+
+// Load time buttons from server API (proxied from 4anm.top)
 async function loadTimeButtons() {
   try {
-    // Get time slots from API
-    const response = await fetch("https://linhkaadz.com/api/time-buttons");
-    const data = await response.json();
+    // Fetch time slots from server API
+    const response = await fetch(`${API_BASE_URL}/times`);
 
-    if (data.success && data.data && data.data.length > 0) {
+    if (!response.ok) {
+      throw new Error(
+        `API returned ${response.status}: ${response.statusText}`
+      );
+    }
+
+    const result = await response.json();
+
+    if (
+      result.success &&
+      result.data &&
+      result.data.get_times &&
+      Array.isArray(result.data.get_times) &&
+      result.data.get_times.length > 0
+    ) {
       // Get time slots that have data in DB
       let dbTimeSlots = [];
       try {
@@ -160,28 +180,6 @@ async function loadTimeButtons() {
         }
       } catch (e) {
         console.log("Could not load time slots from DB:", e);
-      }
-
-      // Sort by order
-      const timeButtons = data.data.sort(
-        (a, b) => (a.order || 0) - (b.order || 0)
-      );
-
-      // Get list of time slots from API
-      const apiTimeSlots = timeButtons.map((tb) => tb.time);
-
-      // Find time slots in DB but not in API (need to be deleted)
-      const timeSlotsToDelete = dbTimeSlots.filter(
-        (timeSlot) => !apiTimeSlots.includes(timeSlot)
-      );
-
-      // Clean up time slots that no longer exist in API
-      if (timeSlotsToDelete.length > 0) {
-        console.log(
-          `Cleaning up ${timeSlotsToDelete.length} time slots that no longer exist in API:`,
-          timeSlotsToDelete
-        );
-        await cleanupTimeSlots(timeSlotsToDelete);
       }
 
       // Check if user is admin
@@ -206,41 +204,39 @@ async function loadTimeButtons() {
       // Filter time buttons based on admin status and custom links
       const visibleTimeButtons = [];
 
-      for (const timeBtn of timeButtons) {
+      for (const timeSlot of result.data.get_times) {
+        const timeValue = timeSlot.start_time;
+        const timeLabel = timeSlot.real_time || timeValue;
+
         // Mark if has data in DB
-        const hasData = dbTimeSlots.includes(timeBtn.time);
+        const hasData = dbTimeSlots.includes(timeValue);
 
         // If not admin, check if time slot has custom links
         if (!isAdmin) {
           const hasLinks =
             allData &&
-            allData[timeBtn.time] &&
-            allData[timeBtn.time].linkMapping &&
-            typeof allData[timeBtn.time].linkMapping === "object" &&
-            Object.keys(allData[timeBtn.time].linkMapping).length > 0;
+            allData[timeValue] &&
+            allData[timeValue].linkMapping &&
+            typeof allData[timeValue].linkMapping === "object" &&
+            Object.keys(allData[timeValue].linkMapping).length > 0;
 
           // Only show time slots that have custom links
           if (!hasLinks) {
-            console.log(
-              `Hiding time slot ${timeBtn.time} - no custom links yet`
-            );
+            console.log(`Hiding time slot ${timeValue} - no custom links yet`);
             continue; // Skip this time slot for non-admin users
           }
         }
 
         // Add to visible list
-        visibleTimeButtons.push(timeBtn);
+        visibleTimeButtons.push({ time: timeValue, label: timeLabel });
 
         const option = document.createElement("option");
-        option.value = timeBtn.time;
-        option.textContent = hasData
-          ? `${timeBtn.label || timeBtn.name} ✓`
-          : timeBtn.label || timeBtn.name;
+        option.value = timeValue;
+        option.textContent = hasData ? `${timeLabel} ✓` : timeLabel;
         select.appendChild(option);
       }
 
-      // Restore previous selection if it still exists, otherwise auto-select
-      // Check if previous value is in visible time buttons
+      // Restore previous selection if it still exists, otherwise auto-select first
       if (
         previousValue &&
         visibleTimeButtons.find((tb) => tb.time === previousValue)
@@ -252,18 +248,22 @@ async function loadTimeButtons() {
           select.dispatchEvent(new Event("change", { bubbles: true }));
         }, 100);
       } else {
-        // Auto-select first active time slot from visible buttons
-        const activeTime = visibleTimeButtons.find((tb) => tb.isActive);
-        if (activeTime) {
-          currentTime = activeTime.time;
-          select.value = currentTime;
-          // Trigger change event to load products
-          setTimeout(() => {
-            select.dispatchEvent(new Event("change", { bubbles: true }));
-          }, 100);
-        } else if (visibleTimeButtons.length > 0) {
+        // Auto-select first time slot (default behavior)
+        if (visibleTimeButtons.length > 0) {
           currentTime = visibleTimeButtons[0].time;
           select.value = currentTime;
+
+          // Set default filter to 1k if not already set
+          if (!activePriceFilter) {
+            activePriceFilter = "price_1k";
+            const price1kBtn = document.querySelector(
+              '.price-filter-btn[data-filter="price_1k"]'
+            );
+            if (price1kBtn) {
+              price1kBtn.classList.add("active");
+            }
+          }
+
           // Trigger change event to load products
           setTimeout(() => {
             select.dispatchEvent(new Event("change", { bubbles: true }));
@@ -289,6 +289,8 @@ async function loadTimeButtons() {
           }
         }
       }
+    } else {
+      console.warn("⚠️ No get_times found in API response");
     }
   } catch (error) {
     console.error("Error loading time buttons:", error);
@@ -415,13 +417,10 @@ async function loadProducts(forceReloadData = false) {
         `🔄 No data in DB for "${currentTime || "all"}", fetching from API...`
       );
 
-      // Build API URL
-      let apiUrl = `https://linhkaadz.com/api/aff-shopee/products?page=1&limit=10000`;
-
-      // Add time filter if selected
-      if (currentTime) {
-        apiUrl += `&time=${encodeURIComponent(currentTime)}`;
-      }
+      // Build API URL for server proxy
+      const apiUrl = `${API_BASE_URL}/products?get_time=${
+        currentTime || ""
+      }&page=1&limit=10000&sort_by=discount&rating_filter=all&query=&fs=false`;
 
       console.log(`📡 Calling API: ${apiUrl}`);
 
@@ -434,22 +433,48 @@ async function loadProducts(forceReloadData = false) {
           );
         }
 
-        const data = await response.json();
+        const result = await response.json();
         console.log("API response:", {
-          success: data.success,
-          hasData: !!data.data,
-          isArray: Array.isArray(data.data),
-          dataLength: Array.isArray(data.data) ? data.data.length : 0,
+          success: result.success,
+          hasProducts: !!result.data?.products,
+          isArray: Array.isArray(result.data?.products),
+          dataLength: Array.isArray(result.data?.products)
+            ? result.data.products.length
+            : 0,
         });
 
         if (
-          data.success &&
-          data.data &&
-          Array.isArray(data.data) &&
-          data.data.length > 0
+          result.success &&
+          result.data &&
+          result.data.products &&
+          Array.isArray(result.data.products) &&
+          result.data.products.length > 0
         ) {
-          allProducts = data.data;
-          totalProducts = data.total || allProducts.length;
+          // Map products from new format to old format
+          allProducts = result.data.products.map((product) => ({
+            title: product.name || "",
+            price: product.price || "0",
+            original_price:
+              product.price_before_discount || product.price || "0",
+            img: product.image
+              ? `https://cf.shopee.vn/file/${product.image}`
+              : "https://via.placeholder.com/300x300?text=No+Image",
+            link: product.link || "",
+            percent: product.discount || 0,
+            amount: product.stock || 0,
+            sold: product.sold || 0,
+            rating_star: product.rating_star || 0,
+            shop_location: product.shop_location || "",
+            shop_id: product.shop_id || 0,
+            item_id: product.item_id || 0,
+            start_time: product.start_time || product.start_time || "",
+            // Keep original data for reference
+            _original: product,
+          }));
+
+          totalProducts = result.data.has_more
+            ? allProducts.length
+            : allProducts.length;
           console.log(
             `✅ Loaded ${allProducts.length} products from API for ${
               currentTime || "all time slots"
@@ -480,6 +505,17 @@ async function loadProducts(forceReloadData = false) {
       console.log(
         `✅ Using ${allProducts.length} products from DB for ${currentTime}`
       );
+    }
+
+    // Apply default filter to 1k if not set and products are loaded
+    if (!activePriceFilter && allProducts.length > 0) {
+      activePriceFilter = "price_1k";
+      const price1kBtn = document.querySelector(
+        '.price-filter-btn[data-filter="price_1k"]'
+      );
+      if (price1kBtn) {
+        price1kBtn.classList.add("active");
+      }
     }
 
     // Apply filters
@@ -554,9 +590,13 @@ function applyFilters() {
   // Apply search filter
   if (currentSearch.trim()) {
     const searchLower = currentSearch.toLowerCase();
-    filteredProducts = filteredProducts.filter((product) =>
-      product.title.toLowerCase().includes(searchLower)
-    );
+    filteredProducts = filteredProducts.filter((product) => {
+      const title = (product.title || "").toLowerCase();
+      const nameNoAccent = (
+        product._original?.name_noaccent || ""
+      ).toLowerCase();
+      return title.includes(searchLower) || nameNoAccent.includes(searchLower);
+    });
   }
 
   // Apply price filters

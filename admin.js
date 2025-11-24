@@ -178,14 +178,34 @@ async function handleSystemStatusChange(e) {
   }
 }
 
-// Load time buttons from API
+// Load time buttons from server API (proxied from 4anm.top)
 async function loadTimeButtons() {
   try {
-    const response = await fetch("https://linhkaadz.com/api/time-buttons");
-    const data = await response.json();
+    // Fetch time slots from server API
+    const response = await fetch(`${API_BASE_URL}/times`);
 
-    if (data.success && data.data && data.data.length > 0) {
-      timeButtons = data.data.sort((a, b) => (a.order || 0) - (b.order || 0));
+    if (!response.ok) {
+      throw new Error(
+        `API returned ${response.status}: ${response.statusText}`
+      );
+    }
+
+    const result = await response.json();
+
+    if (
+      result.success &&
+      result.data &&
+      result.data.get_times &&
+      Array.isArray(result.data.get_times) &&
+      result.data.get_times.length > 0
+    ) {
+      // Map get_times to timeButtons format for compatibility
+      timeButtons = result.data.get_times.map((timeSlot) => ({
+        time: timeSlot.start_time,
+        label: timeSlot.real_time || timeSlot.start_time,
+        name: timeSlot.real_time || timeSlot.start_time,
+        order: 0, // Default order
+      }));
 
       // Get list of time slots from API
       const apiTimeSlots = timeButtons.map((tb) => tb.time);
@@ -227,6 +247,9 @@ async function loadTimeButtons() {
         option.textContent = timeBtn.label || timeBtn.name;
         select.appendChild(option);
       });
+    } else {
+      console.warn("⚠️ No get_times found in API response");
+      alert("Không tìm thấy khung giờ nào từ API");
     }
   } catch (error) {
     console.error("Error loading time buttons:", error);
@@ -342,21 +365,55 @@ async function loadTimeSlotDataFromJSON(timeSlot) {
   }
 }
 
-// Load products for specific time slot
+// Load products for specific time slot from server API (proxied from 4anm.top)
 async function loadProductsForTimeSlot(timeSlot) {
   showLoading(true);
 
   try {
-    // Build API URL with time filter
-    const apiUrl = `https://linhkaadz.com/api/aff-shopee/products?page=1&limit=10000&time=${encodeURIComponent(
+    // Build API URL for server proxy
+    const apiUrl = `${API_BASE_URL}/products?get_time=${encodeURIComponent(
       timeSlot
-    )}`;
+    )}&page=1&limit=10000&sort_by=discount&rating_filter=all&query=&fs=false`;
+
+    console.log(`📡 [Admin] Calling API: ${apiUrl}`);
 
     const response = await fetch(apiUrl);
-    const data = await response.json();
 
-    if (data.success && data.data && Array.isArray(data.data)) {
-      productsData = data.data;
+    if (!response.ok) {
+      throw new Error(
+        `API returned ${response.status}: ${response.statusText}`
+      );
+    }
+
+    const result = await response.json();
+
+    if (
+      result.success &&
+      result.data &&
+      result.data.products &&
+      Array.isArray(result.data.products) &&
+      result.data.products.length > 0
+    ) {
+      // Map products from new format to old format for compatibility
+      productsData = result.data.products.map((product) => ({
+        title: product.name || "",
+        price: product.price || "0",
+        original_price: product.price_before_discount || product.price || "0",
+        img: product.image
+          ? `https://cf.shopee.vn/file/${product.image}`
+          : "https://via.placeholder.com/300x300?text=No+Image",
+        link: product.link || "",
+        percent: product.discount || 0,
+        amount: product.stock || 0,
+        sold: product.sold || 0,
+        rating_star: product.rating_star || 0,
+        shop_location: product.shop_location || "",
+        shop_id: product.shop_id || 0,
+        item_id: product.item_id || 0,
+        start_time: product.start_time || "",
+        // Keep original data for reference
+        _original: product,
+      }));
 
       // Initialize time slot data if not exists
       if (!currentTimeSlotData) {
@@ -383,12 +440,16 @@ async function loadProductsForTimeSlot(timeSlot) {
 
       // Fill table with products and existing mappings
       fillProductsTable(currentTimeSlotData);
+
+      console.log(
+        `✅ [Admin] Loaded ${productsData.length} products for time slot ${timeSlot}`
+      );
     } else {
       productsData = [];
       alert("Không có dữ liệu sản phẩm cho khung giờ này");
     }
   } catch (error) {
-    console.error("Error loading products:", error);
+    console.error("❌ [Admin] Error loading products:", error);
     alert("Lỗi khi tải sản phẩm: " + error.message);
     productsData = [];
   } finally {
