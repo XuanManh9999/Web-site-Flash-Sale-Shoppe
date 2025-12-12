@@ -7,7 +7,7 @@ let allProducts = [];
 let filteredProducts = [];
 let totalProducts = 0;
 let affId = "";
-let activePriceFilter = "";
+let activePriceFilter = "price_1k";
 let linkMappingCache = {}; // Cache for affiliate links: { originalLink: { longLink, timestamp, date } }
 let lastScanTime = null; // Last time we scanned for new links
 let scanInterval = null; // Interval for auto-scanning
@@ -672,7 +672,7 @@ function createProductCard(product) {
     product.title
   )}" class="product-image" 
                      onerror="this.src='https://via.placeholder.com/300x300?text=No+Image'">
-                <div class="discount-badge-overlay">-${discountPercent}%</div>
+                
                 ${
                   hasAffiliateLink
                     ? '<div class="affiliate-badge">🔗 Affiliate</div>'
