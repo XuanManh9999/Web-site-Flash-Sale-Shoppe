@@ -712,7 +712,6 @@ function createProductCard(product) {
     product.title
   )}" class="product-image" 
                      onerror="this.src='https://via.placeholder.com/300x300?text=No+Image'">
-                <div class="discount-badge-overlay">-${discountPercent}%</div>
                 ${
                   hasAffiliateLink
                     ? '<div class="affiliate-badge">🔗 Affiliate</div>'
