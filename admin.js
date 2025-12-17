@@ -4,7 +4,7 @@ let productsData = [];
 let currentTimeSlot = ""; // Current selected time slot
 let currentTimeSlotData = null; // Current time slot data: { linkMapping: {}, subIdMapping: {}, reasonMapping: {}, productCache: {} }
 let allTimeSlotData = {}; // All data: { "time": { linkMapping: {}, subIdMapping: {}, reasonMapping: {}, productCache: {} } }
-const API_BASE_URL = "https://buichung.vn/api"; // Node.js API base URL https://buichung.vn/api
+const API_BASE_URL = "http://localhost:3000/api"; // Node.js API base URL http://localhost:3000/api
 let isUpdatingSystemStatus = false; // Flag to prevent multiple simultaneous updates
 
 // Initialize on page load
@@ -178,7 +178,7 @@ async function handleSystemStatusChange(e) {
   }
 }
 
-// Load time buttons from server API (proxied from 4anm.top)
+// Load time buttons from server API (from addlivetag.com)
 async function loadTimeButtons() {
   try {
     // Fetch time slots from server API
@@ -244,7 +244,13 @@ async function loadTimeButtons() {
       timeButtons.forEach((timeBtn) => {
         const option = document.createElement("option");
         option.value = timeBtn.time;
-        option.textContent = timeBtn.label || timeBtn.name;
+        // Format timestamp to Vietnamese time if label is not available or is a timestamp
+        const displayLabel = timeBtn.label || timeBtn.name;
+        const formattedLabel =
+          displayLabel && /^\d+$/.test(displayLabel)
+            ? formatTimestampToVietnamTime(displayLabel)
+            : displayLabel;
+        option.textContent = formattedLabel;
         select.appendChild(option);
       });
     } else {
@@ -365,7 +371,7 @@ async function loadTimeSlotDataFromJSON(timeSlot) {
   }
 }
 
-// Load products for specific time slot from server API (proxied from 4anm.top)
+// Load products for specific time slot from server API (from addlivetag.com)
 async function loadProductsForTimeSlot(timeSlot) {
   showLoading(true);
 
@@ -387,6 +393,16 @@ async function loadProductsForTimeSlot(timeSlot) {
 
     const result = await response.json();
 
+    console.log("📥 [Admin] API Response:", {
+      success: result.success,
+      hasData: !!result.data,
+      hasProducts: !!result.data?.products,
+      productsCount: Array.isArray(result.data?.products)
+        ? result.data.products.length
+        : 0,
+      sampleProduct: result.data?.products?.[0] || null,
+    });
+
     if (
       result.success &&
       result.data &&
@@ -395,25 +411,41 @@ async function loadProductsForTimeSlot(timeSlot) {
       result.data.products.length > 0
     ) {
       // Map products from new format to old format for compatibility
-      productsData = result.data.products.map((product) => ({
-        title: product.name || "",
-        price: product.price || "0",
-        original_price: product.price_before_discount || product.price || "0",
-        img: product.image
-          ? `https://cf.shopee.vn/file/${product.image}`
-          : "https://via.placeholder.com/300x300?text=No+Image",
-        link: product.link || "",
-        percent: product.discount || 0,
-        amount: product.stock || 0,
-        sold: product.sold || 0,
-        rating_star: product.rating_star || 0,
-        shop_location: product.shop_location || "",
-        shop_id: product.shop_id || 0,
-        item_id: product.item_id || 0,
-        start_time: product.start_time || "",
-        // Keep original data for reference
-        _original: product,
-      }));
+      productsData = result.data.products
+        .filter((product) => product && product.link) // Filter out invalid products
+        .map((product) => {
+          // Build image URL
+          let imgUrl = "https://via.placeholder.com/300x300?text=No+Image";
+          if (product.image) {
+            // If image is already a full URL, use it directly
+            if (product.image.startsWith("http")) {
+              imgUrl = product.image;
+            } else {
+              // Otherwise, construct Shopee CDN URL
+              imgUrl = `https://cf.shopee.vn/file/${product.image}`;
+            }
+          }
+
+          return {
+            title: product.name || "",
+            price: String(product.price || "0"),
+            original_price: String(
+              product.price_before_discount || product.price || "0"
+            ),
+            img: imgUrl,
+            link: product.link || "",
+            percent: Number(product.discount || 0),
+            amount: Number(product.stock || 0),
+            sold: Number(product.sold || 0),
+            rating_star: Number(product.rating_star || 0),
+            shop_location: product.shop_location || "",
+            shop_id: Number(product.shop_id || 0),
+            item_id: Number(product.item_id || 0),
+            start_time: String(product.start_time || ""),
+            // Keep original data for reference
+            _original: product,
+          };
+        });
 
       // Initialize time slot data if not exists
       if (!currentTimeSlotData) {
@@ -438,8 +470,31 @@ async function loadProductsForTimeSlot(timeSlot) {
       // Update product count
       updateProductCount();
 
+      console.log(
+        `✅ [Admin] Mapped ${productsData.length} products. Sample:`,
+        productsData.length > 0
+          ? {
+              title: productsData[0].title,
+              link: productsData[0].link,
+              img: productsData[0].img,
+              price: productsData[0].price,
+            }
+          : "No products"
+      );
+
+      // Verify productsData before filling table
+      console.log(
+        `🔍 [Admin] Before fillProductsTable: productsData.length = ${productsData.length}`,
+        productsData.slice(0, 3) // Show first 3 products
+      );
+
       // Fill table with products and existing mappings
       fillProductsTable(currentTimeSlotData);
+
+      // Verify after filling
+      console.log(
+        `🔍 [Admin] After fillProductsTable: productsData.length = ${productsData.length}`
+      );
 
       console.log(
         `✅ [Admin] Loaded ${productsData.length} products for time slot ${timeSlot}`
@@ -544,7 +599,22 @@ async function handleClearAll() {
 function fillProductsTable(timeSlotData = null) {
   const tbody = document.getElementById("productsTableBody");
 
-  if (productsData.length === 0) {
+  if (!tbody) {
+    console.error("❌ [Admin] productsTableBody element not found!");
+    return;
+  }
+
+  console.log(
+    `📋 [Admin] fillProductsTable called with ${productsData.length} products`,
+    {
+      productsDataIsArray: Array.isArray(productsData),
+      productsDataLength: productsData?.length,
+      firstProduct: productsData?.[0],
+    }
+  );
+
+  if (!productsData || productsData.length === 0) {
+    console.warn("⚠️ [Admin] No products data to display");
     tbody.innerHTML = `
       <tr>
         <td colspan="8" class="empty-table">Chưa có dữ liệu. Vui lòng chọn khung giờ</td>
@@ -567,81 +637,127 @@ function fillProductsTable(timeSlotData = null) {
   const subIdMapping = timeSlotData.subIdMapping || {};
   const reasonMapping = timeSlotData.reasonMapping || {};
 
-  tbody.innerHTML = productsData
-    .map((product, index) => {
-      const originalLink = product.link || "";
-      const conversionLink = linkMapping[originalLink] || "";
-      const subIds = subIdMapping[originalLink] || {
-        sub1: "",
-        sub2: "",
-        sub3: "",
-        sub4: "",
-        sub5: "",
-      };
-      const reason = reasonMapping[originalLink] || "";
+  console.log(
+    `📋 [Admin] Rendering ${productsData.length} products into table`
+  );
 
-      return `
-        <tr data-index="${index}" data-original-link="${escapeHtml(
-        originalLink
-      )}">
+  try {
+    // Validate productsData
+    if (!Array.isArray(productsData)) {
+      console.error(
+        "❌ [Admin] productsData is not an array:",
+        typeof productsData,
+        productsData
+      );
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="8" class="empty-table">Lỗi: productsData không phải là mảng</td>
+        </tr>
+      `;
+      return;
+    }
+
+    console.log(
+      `🔍 [Admin] Processing ${productsData.length} products for table rendering`
+    );
+
+    const htmlRows = productsData.map((product, index) => {
+      try {
+        if (!product || typeof product !== "object") {
+          console.warn(
+            `⚠️ [Admin] Product at index ${index} is invalid:`,
+            product
+          );
+          return "";
+        }
+
+        const originalLink = product.link || "";
+        if (!originalLink) {
+          console.warn(
+            `⚠️ [Admin] Product at index ${index} has no link:`,
+            product
+          );
+          return "";
+        }
+
+        const conversionLink = String(linkMapping[originalLink] || "");
+        const subIds = subIdMapping[originalLink] || {
+          sub1: "",
+          sub2: "",
+          sub3: "",
+          sub4: "",
+          sub5: "",
+        };
+        const reason = String(reasonMapping[originalLink] || "");
+
+        // Ensure all values are safe for HTML rendering
+        const safeOriginalLink = escapeHtml(originalLink);
+        const safeConversionLink = escapeHtml(conversionLink);
+        const safeSub1 = escapeHtml(String(subIds.sub1 || ""));
+        const safeSub2 = escapeHtml(String(subIds.sub2 || ""));
+        const safeSub3 = escapeHtml(String(subIds.sub3 || ""));
+        const safeSub4 = escapeHtml(String(subIds.sub4 || ""));
+        const safeSub5 = escapeHtml(String(subIds.sub5 || ""));
+        const safeReason = escapeHtml(reason);
+
+        return `
+        <tr data-index="${index}" data-original-link="${safeOriginalLink}">
           <td class="link-cell">
             <input type="text" 
-                   value="${escapeHtml(originalLink)}" 
+                   value="${safeOriginalLink}" 
                    readonly 
                    class="original-link-input"
-                   data-link="${escapeHtml(originalLink)}">
+                   data-link="${safeOriginalLink}">
           </td>
           <td class="subid-cell">
             <input type="text" 
                    class="subid-input" 
                    data-subid="1"
-                   data-original-link="${escapeHtml(originalLink)}"
-                   value="${escapeHtml(subIds.sub1 || "")}"
+                   data-original-link="${safeOriginalLink}"
+                   value="${safeSub1}"
                    placeholder="Sub_id1">
           </td>
           <td class="subid-cell">
             <input type="text" 
                    class="subid-input" 
                    data-subid="2"
-                   data-original-link="${escapeHtml(originalLink)}"
-                   value="${escapeHtml(subIds.sub2 || "")}"
+                   data-original-link="${safeOriginalLink}"
+                   value="${safeSub2}"
                    placeholder="Sub_id2">
           </td>
           <td class="subid-cell">
             <input type="text" 
                    class="subid-input" 
                    data-subid="3"
-                   data-original-link="${escapeHtml(originalLink)}"
-                   value="${escapeHtml(subIds.sub3 || "")}"
+                   data-original-link="${safeOriginalLink}"
+                   value="${safeSub3}"
                    placeholder="Sub_id3">
           </td>
           <td class="subid-cell">
             <input type="text" 
                    class="subid-input" 
                    data-subid="4"
-                   data-original-link="${escapeHtml(originalLink)}"
-                   value="${escapeHtml(subIds.sub4 || "")}"
+                   data-original-link="${safeOriginalLink}"
+                   value="${safeSub4}"
                    placeholder="Sub_id4">
           </td>
           <td class="subid-cell">
             <input type="text" 
                    class="subid-input" 
                    data-subid="5"
-                   data-original-link="${escapeHtml(originalLink)}"
-                   value="${escapeHtml(subIds.sub5 || "")}"
+                   data-original-link="${safeOriginalLink}"
+                   value="${safeSub5}"
                    placeholder="Sub_id5">
           </td>
           <td class="conversion-link-cell">
             <input type="text" 
                    class="conversion-link-input" 
-                   value="${escapeHtml(conversionLink)}"
+                   value="${safeConversionLink}"
                    placeholder="Nhập liên kết chuyển đổi"
-                   data-original-link="${escapeHtml(originalLink)}">
+                   data-original-link="${safeOriginalLink}">
           </td>
           <td class="reason-cell">
-            <select class="reason-select" data-original-link="${escapeHtml(
-              originalLink
-            )}">
+            <select class="reason-select" data-original-link="${safeOriginalLink}">
               <option value="">-- Chọn --</option>
               <option value="Thành công" ${
                 reason === "Thành công" ? "selected" : ""
@@ -662,8 +778,63 @@ function fillProductsTable(timeSlotData = null) {
           </td>
         </tr>
       `;
-    })
-    .join("");
+      } catch (err) {
+        console.error(
+          `❌ [Admin] Error rendering product at index ${index}:`,
+          err,
+          product
+        );
+        return "";
+      }
+    });
+
+    const htmlContent = htmlRows.filter((row) => row).join("");
+
+    console.log(
+      `📋 [Admin] Generated HTML for ${
+        htmlRows.filter((r) => r).length
+      } rows (from ${productsData.length} products)`
+    );
+
+    if (!htmlContent) {
+      console.error("❌ [Admin] No HTML content generated!");
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="8" class="empty-table">Lỗi khi render dữ liệu</td>
+        </tr>
+      `;
+      return;
+    }
+
+    if (htmlContent && htmlContent.trim().length > 0) {
+      tbody.innerHTML = htmlContent;
+
+      const renderedRows = tbody.querySelectorAll("tr").length;
+      console.log(
+        `✅ [Admin] Successfully rendered HTML for ${productsData.length} products. Table now has ${renderedRows} rows`
+      );
+
+      if (renderedRows === 0) {
+        console.error("❌ [Admin] Table rendered but no rows found!");
+        console.error("HTML content length:", htmlContent.length);
+        console.error("HTML preview:", htmlContent.substring(0, 500));
+      }
+    } else {
+      console.error("❌ [Admin] Generated HTML content is empty!");
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="8" class="empty-table">Lỗi: Không thể tạo HTML cho dữ liệu</td>
+        </tr>
+      `;
+    }
+  } catch (error) {
+    console.error("❌ [Admin] Error in fillProductsTable:", error);
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="8" class="empty-table">Lỗi khi hiển thị dữ liệu: ${error.message}</td>
+      </tr>
+    `;
+  }
 
   // Add event listeners for conversion link inputs
   tbody.querySelectorAll(".conversion-link-input").forEach((input) => {
@@ -955,8 +1126,27 @@ async function handleUploadExcel(e) {
       // Update currentTimeSlotData
       currentTimeSlotData = timeSlotData;
 
+      console.log(
+        `📤 [Admin] Excel uploaded: ${jsonData.length} rows. Reloading products...`
+      );
+
       // Reload products from API to merge with uploaded data
       await loadProductsForTimeSlot(selectedTime);
+
+      // Verify productsData after reload
+      console.log(
+        `📤 [Admin] After reload: productsData.length = ${productsData.length}`
+      );
+
+      // Ensure table is filled even if loadProductsForTimeSlot didn't fill it
+      if (productsData.length > 0) {
+        console.log("📤 [Admin] Filling table with loaded products");
+        fillProductsTable(currentTimeSlotData);
+      } else {
+        console.warn(
+          "⚠️ [Admin] No products loaded after Excel upload. Table may be empty."
+        );
+      }
 
       // Save to database
       await saveTimeSlotDataToJSON();
@@ -976,11 +1166,51 @@ async function handleUploadExcel(e) {
   e.target.value = "";
 }
 
+// Convert Unix timestamp to Vietnamese time format
+function formatTimestampToVietnamTime(timestamp) {
+  // Check if timestamp is a number (Unix timestamp in seconds)
+  const unixTimestamp =
+    typeof timestamp === "string" ? parseInt(timestamp) : timestamp;
+
+  if (isNaN(unixTimestamp) || unixTimestamp <= 0) {
+    return timestamp; // Return original if invalid
+  }
+
+  // Convert to milliseconds (JavaScript Date uses milliseconds)
+  // Unix timestamp is in UTC
+  const date = new Date(unixTimestamp * 1000);
+
+  // Check if date is valid
+  if (isNaN(date.getTime())) {
+    return timestamp; // Return original if invalid
+  }
+
+  // Convert to Vietnam time (UTC+7) by adding 7 hours
+  const vietnamTimeMs = date.getTime() + 7 * 60 * 60 * 1000;
+  const vietnamDate = new Date(vietnamTimeMs);
+
+  // Extract components from UTC (which now represents Vietnam time)
+  const utcYear = vietnamDate.getUTCFullYear();
+  const utcMonth = vietnamDate.getUTCMonth();
+  const utcDay = vietnamDate.getUTCDate();
+  const utcHours = vietnamDate.getUTCHours();
+  const utcMinutes = vietnamDate.getUTCMinutes();
+
+  // Format: HH:mm | DD/MM
+  const hours = String(utcHours).padStart(2, "0");
+  const minutes = String(utcMinutes).padStart(2, "0");
+  const day = String(utcDay).padStart(2, "0");
+  const month = String(utcMonth + 1).padStart(2, "0");
+
+  return `${hours}:${minutes} | ${day}/${month}`;
+}
+
 // Update product count
 function updateProductCount() {
   const countElement = document.getElementById("productCount");
   if (productsData.length > 0 && currentTimeSlot) {
-    countElement.textContent = `Khung giờ: ${currentTimeSlot} - Tổng số sản phẩm: ${productsData.length}`;
+    const formattedTime = formatTimestampToVietnamTime(currentTimeSlot);
+    countElement.textContent = `Khung giờ: ${formattedTime} - Tổng số sản phẩm: ${productsData.length}`;
   } else {
     countElement.textContent = "Chưa có dữ liệu";
   }

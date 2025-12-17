@@ -27,16 +27,8 @@ try {
 const app = express();
 const PORT = 3000;
 const DB_PATH = "./data.db";
-const API_BASE_4ANM = "https://4anm.top";
-
-// Token/Cookie management for 4anm.top API (server-side)
-let apiToken = {
-  cookie: "",
-  csrfToken: "",
-  lastUpdated: 0,
-  expiresIn: 30 * 60 * 1000, // 30 minutes
-  defaultGetTime: null,
-};
+// New API endpoint
+const API_BASE_DEALXK = "https://addlivetag.com/api/data_dealxk.php";
 
 // Middleware
 app.use(cors());
@@ -76,33 +68,68 @@ function initDatabase() {
           return;
         }
 
-        // Create table for system status
+        // Create table for products
         db.run(
           `
-          CREATE TABLE IF NOT EXISTS system_status (
+          CREATE TABLE IF NOT EXISTS products (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            is_active INTEGER DEFAULT 1,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            time_slot TEXT NOT NULL,
+            product_data TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(time_slot, product_data)
           )
         `,
           (err) => {
             if (err) {
-              console.error("Error creating system_status table:", err);
+              console.error("Error creating products table:", err);
               reject(err);
               return;
             }
 
-            // Initialize system status if not exists
+            // Create index for faster queries
             db.run(
-              `INSERT OR IGNORE INTO system_status (id, is_active) VALUES (1, 1)`,
+              `CREATE INDEX IF NOT EXISTS idx_products_time_slot ON products(time_slot)`,
               (err) => {
                 if (err) {
-                  console.error("Error initializing system status:", err);
+                  console.error("Error creating products index:", err);
                   reject(err);
-                } else {
-                  console.log("Database initialized");
-                  resolve(db);
+                  return;
                 }
+
+                // Create table for system status
+                db.run(
+                  `
+                  CREATE TABLE IF NOT EXISTS system_status (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    is_active INTEGER DEFAULT 1,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                  )
+                `,
+                  (err) => {
+                    if (err) {
+                      console.error("Error creating system_status table:", err);
+                      reject(err);
+                      return;
+                    }
+
+                    // Initialize system status if not exists
+                    db.run(
+                      `INSERT OR IGNORE INTO system_status (id, is_active) VALUES (1, 1)`,
+                      (err) => {
+                        if (err) {
+                          console.error(
+                            "Error initializing system status:",
+                            err
+                          );
+                          reject(err);
+                        } else {
+                          console.log("Database initialized");
+                          resolve(db);
+                        }
+                      }
+                    );
+                  }
+                );
               }
             );
           }
@@ -362,211 +389,117 @@ app.post("/api/system-status", (req, res) => {
   );
 });
 
-// ==================== 4ANM.TOP API PROXY ====================
+// ==================== DEALXK API PROXY ====================
 
-// Refresh API token/cookie from 4anm.top
-async function refreshApiToken() {
+// Helper function to convert Unix timestamp to time slot format (for matching)
+function getTimeSlotFromTimestamp(timestamp) {
+  if (!timestamp) return null;
+  const date = new Date(timestamp * 1000);
+  // Convert to Vietnam time (UTC+7)
+  const vietnamTimeMs = date.getTime() + 7 * 60 * 60 * 1000;
+  const vietnamDate = new Date(vietnamTimeMs);
+
+  // Extract hour and minute
+  const hours = vietnamDate.getUTCHours();
+  const minutes = vietnamDate.getUTCMinutes();
+
+  // Format: HHmm (e.g., "0000" for 00:00)
+  return `${String(hours).padStart(2, "0")}${String(minutes).padStart(2, "0")}`;
+}
+
+// Helper function to normalize time slot for comparison
+function normalizeTimeSlot(timeSlot) {
+  if (!timeSlot) return null;
+  // If it's a Unix timestamp, convert it
+  if (/^\d+$/.test(timeSlot)) {
+    return getTimeSlotFromTimestamp(parseInt(timeSlot));
+  }
+  // If it's in format "HH:mm", convert to "HHmm"
+  if (/^\d{1,2}:\d{2}$/.test(timeSlot)) {
+    const [hours, minutes] = timeSlot.split(":");
+    return `${String(parseInt(hours)).padStart(2, "0")}${String(
+      parseInt(minutes)
+    ).padStart(2, "0")}`;
+  }
+  // If it's already in "HHmm" format, return as is
+  if (/^\d{4}$/.test(timeSlot)) {
+    return timeSlot;
+  }
+  return timeSlot;
+}
+
+// API: Get time slots from external API
+app.get("/api/times", async (req, res) => {
   try {
-    console.log("🔄 [Server] Refreshing API token from 4anm.top...");
+    console.log("🔄 [Server] Fetching time slots from API...");
 
-    // Fetch the main page to get fresh cookies and CSRF token
-    const response = await fetch(`${API_BASE_4ANM}/flashsale`, {
+    // Fetch all products from API
+    const response = await fetch(API_BASE_DEALXK, {
       method: "GET",
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        Accept: "application/json, text/plain, */*",
         "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
       },
     });
 
-    // Extract cookies from response headers
-    let cookieString = "";
-    const cookies = [];
+    if (!response.ok) {
+      throw new Error(
+        `API returned ${response.status}: ${response.statusText}`
+      );
+    }
 
-    // Get all Set-Cookie headers
-    const setCookieHeaders = response.headers.get("set-cookie");
-    if (setCookieHeaders) {
-      // Handle multiple cookies (split by comma, but be careful with expires dates)
-      const cookieArray = setCookieHeaders.split(/,(?=\s*\w+\s*=)/);
-      cookieArray.forEach((cookieHeader) => {
-        const parts = cookieHeader.split(";");
-        if (parts.length > 0) {
-          const [nameValue] = parts;
-          const [name, ...valueParts] = nameValue.split("=");
-          if (name && valueParts.length > 0) {
-            const value = valueParts.join("="); // Rejoin in case value contains =
-            cookies.push(`${name.trim()}=${value.trim()}`);
-          }
+    const products = await response.json();
+
+    if (!Array.isArray(products)) {
+      throw new Error("API returned invalid data format");
+    }
+
+    // Extract unique time slots from products
+    const timeSlotMap = new Map();
+
+    products.forEach((product) => {
+      if (product.sale_time) {
+        // Use sale_time as the key (Unix timestamp)
+        const timeSlot = String(product.sale_time);
+        if (!timeSlotMap.has(timeSlot)) {
+          // Format display: "HH:mm | DD/MM"
+          const date = new Date(product.sale_time * 1000);
+          const vietnamTimeMs = date.getTime() + 7 * 60 * 60 * 1000;
+          const vietnamDate = new Date(vietnamTimeMs);
+
+          const hours = String(vietnamDate.getUTCHours()).padStart(2, "0");
+          const minutes = String(vietnamDate.getUTCMinutes()).padStart(2, "0");
+          const day = String(vietnamDate.getUTCDate()).padStart(2, "0");
+          const month = String(vietnamDate.getUTCMonth() + 1).padStart(2, "0");
+
+          const displayTime = `${hours}:${minutes} | ${day}/${month}`;
+
+          timeSlotMap.set(timeSlot, {
+            start_time: timeSlot,
+            real_time: displayTime,
+          });
         }
-      });
-    }
-
-    cookieString = cookies.join("; ");
-
-    // Get CSRF token from response body
-    const html = await response.text();
-    let csrfToken = "";
-
-    // Try multiple patterns to find CSRF token
-    const patterns = [
-      /name=["']csrf-token["']\s+content=["']([^"']+)["']/i,
-      /csrf-token["']?\s*[:=]\s*["']([^"']+)["']/i,
-      /x-csrf-token["']?\s*[:=]\s*["']([^"']+)["']/i,
-      /<meta[^>]*name=["']csrf-token["'][^>]*content=["']([^"']+)["']/i,
-      /<meta[^>]*content=["']([^"']+)["'][^>]*name=["']csrf-token["']/i,
-      /window\.csrfToken\s*=\s*["']([^"']+)["']/i,
-      /csrfToken["']?\s*[:=]\s*["']([^"']+)["']/i,
-    ];
-
-    for (const pattern of patterns) {
-      const match = html.match(pattern);
-      if (match && match[1]) {
-        csrfToken = match[1];
-        break;
       }
-    }
-
-    // Update token cache
-    apiToken.cookie = cookieString;
-    apiToken.csrfToken = csrfToken;
-    apiToken.lastUpdated = Date.now();
-
-    console.log("✅ [Server] API token refreshed", {
-      hasCookie: !!cookieString,
-      hasCsrf: !!csrfToken,
-      cookieLength: cookieString.length,
     });
 
-    return { cookie: cookieString, csrfToken };
-  } catch (error) {
-    console.error("❌ [Server] Error refreshing API token:", error);
-    // Try to use cached token if available
-    if (apiToken.cookie && apiToken.csrfToken) {
-      console.log("⚠️ [Server] Using cached token");
-      return { cookie: apiToken.cookie, csrfToken: apiToken.csrfToken };
-    }
-    throw error;
-  }
-}
+    // Convert map to array and sort by start_time (timestamp)
+    const getTimes = Array.from(timeSlotMap.values()).sort((a, b) => {
+      return parseInt(a.start_time) - parseInt(b.start_time);
+    });
 
-// Get valid API token (refresh if expired or about to expire)
-async function getValidApiToken() {
-  const now = Date.now();
-  const timeSinceUpdate = now - apiToken.lastUpdated;
-  const refreshThreshold = apiToken.expiresIn * 0.8; // Refresh when 80% of time has passed (24 minutes)
+    // Get default get_time (latest time slot)
+    const defaultGetTime =
+      getTimes.length > 0 ? getTimes[getTimes.length - 1].start_time : null;
 
-  const isExpired =
-    !apiToken.cookie ||
-    !apiToken.csrfToken ||
-    timeSinceUpdate > apiToken.expiresIn;
-
-  const shouldRefresh = timeSinceUpdate > refreshThreshold;
-
-  if (isExpired || shouldRefresh) {
-    console.log(
-      `🔄 [Server] Token ${
-        isExpired ? "expired" : "about to expire"
-      }, refreshing...`
-    );
-    return await refreshApiToken();
-  }
-
-  return { cookie: apiToken.cookie, csrfToken: apiToken.csrfToken };
-}
-
-// API: Get time slots from external flashsale API
-app.get("/api/times", async (req, res) => {
-  try {
-    // Get valid token
-    let token = await getValidApiToken();
-
-    // Fetch data from API to get get_times
-    const defaultTime = apiToken.defaultGetTime || "";
-    const apiUrl = `${API_BASE_4ANM}/search_flashsale2025.php?get_time=${defaultTime}&page=1&limit=1&sort_by=discount&rating_filter=all&query=&fs=false`;
-
-    let response;
-    try {
-      response = await fetch(apiUrl, {
-        method: "GET",
-        headers: {
-          Cookie: token.cookie,
-          "x-csrf-token": token.csrfToken,
-          "x-requested-with": "XMLHttpRequest",
-          Referer: `${API_BASE_4ANM}/flashsale`,
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          Accept: "application/json, text/plain, */*",
-          "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
-        },
-      });
-    } catch (fetchError) {
-      // If fetch fails, try refreshing token
-      console.log("⚠️ [Server] Fetch failed, refreshing token...");
-      token = await refreshApiToken();
-      response = await fetch(apiUrl, {
-        method: "GET",
-        headers: {
-          Cookie: token.cookie,
-          "x-csrf-token": token.csrfToken,
-          "x-requested-with": "XMLHttpRequest",
-          Referer: `${API_BASE_4ANM}/flashsale`,
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          Accept: "application/json, text/plain, */*",
-          "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
-        },
-      });
-    }
-
-    if (!response.ok) {
-      // If unauthorized or forbidden, refresh token and retry
-      if (response.status === 401 || response.status === 403) {
-        console.log(
-          "⚠️ [Server] Unauthorized/Forbidden, refreshing token and retrying..."
-        );
-        token = await refreshApiToken();
-        response = await fetch(apiUrl, {
-          method: "GET",
-          headers: {
-            Cookie: token.cookie,
-            "x-csrf-token": token.csrfToken,
-            "x-requested-with": "XMLHttpRequest",
-            Referer: `${API_BASE_4ANM}/flashsale`,
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            Accept: "application/json, text/plain, */*",
-            "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
-          },
-        });
-
-        // If still not ok after refresh, throw error
-        if (!response.ok) {
-          throw new Error(
-            `API returned ${response.status}: ${response.statusText} after token refresh`
-          );
-        }
-      } else {
-        // For other errors, throw immediately
-        throw new Error(
-          `API returned ${response.status}: ${response.statusText}`
-        );
-      }
-    }
-
-    const data = await response.json();
-
-    // Store default get_time if available
-    if (data.default_get_time) {
-      apiToken.defaultGetTime = data.default_get_time;
-    }
+    console.log(`✅ [Server] Found ${getTimes.length} time slots`);
 
     res.json({
       success: true,
       data: {
-        get_times: data.get_times || [],
-        default_get_time: data.default_get_time || null,
+        get_times: getTimes,
+        default_get_time: defaultGetTime,
       },
     });
   } catch (error) {
@@ -578,169 +511,361 @@ app.get("/api/times", async (req, res) => {
   }
 });
 
-// API: Get products from external flashsale API
+// Helper function to fetch all products from API and filter by time slot
+async function fetchAllProductsFromAPI() {
+  console.log("🔄 [Server] Fetching all products from API...");
+
+  const response = await fetch(API_BASE_DEALXK, {
+    method: "GET",
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      Accept: "application/json, text/plain, */*",
+      "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`API returned ${response.status}: ${response.statusText}`);
+  }
+
+  const products = await response.json();
+
+  if (!Array.isArray(products)) {
+    throw new Error("API returned invalid data format");
+  }
+
+  console.log(`✅ [Server] Fetched ${products.length} products from API`);
+
+  return products;
+}
+
+// Helper function to map product from new format to old format
+function mapProductToOldFormat(product) {
+  // Extract image ID from URL
+  let imageId = "";
+  if (product.img) {
+    // Handle different URL formats
+    const imgUrl = product.img;
+    if (imgUrl.includes("/file/")) {
+      imageId = imgUrl.split("/file/")[1] || "";
+      // Remove any query parameters
+      if (imageId.includes("?")) {
+        imageId = imageId.split("?")[0];
+      }
+    } else if (imgUrl.includes("shopee.vn")) {
+      // Try to extract from shopee.vn URLs
+      const match = imgUrl.match(/file\/([^/?]+)/);
+      if (match) {
+        imageId = match[1];
+      }
+    }
+  }
+
+  return {
+    name: product.title || "",
+    price: String(product.price || 0),
+    price_before_discount: String(product.original_price || product.price || 0),
+    image: imageId,
+    link: product.link || "",
+    discount: product.percent || 0,
+    stock: product.amount || 0,
+    sold: product.sold || 0,
+    rating_star: 0, // Not available in new API
+    shop_location: "", // Not available in new API
+    shop_id: product.shopid || 0,
+    item_id: product.itemid || 0,
+    start_time: String(product.sale_time || ""),
+    // Keep original data for reference
+    _original: product,
+  };
+}
+
+// Helper function to clear products for a time slot
+function clearProductsForTimeSlot(timeSlot) {
+  return new Promise((resolve, reject) => {
+    db.run("DELETE FROM products WHERE time_slot = ?", [timeSlot], (err) => {
+      if (err) {
+        console.error("Error clearing products:", err);
+        reject(err);
+      } else {
+        console.log(
+          `🗑️ [Server] Cleared old products for time slot ${timeSlot}`
+        );
+        resolve();
+      }
+    });
+  });
+}
+
+// Helper function to save products to database
+function saveProductsToDB(timeSlot, products) {
+  return new Promise((resolve, reject) => {
+    if (!products || products.length === 0) {
+      resolve(0);
+      return;
+    }
+
+    // Insert new products (using link as unique identifier)
+    const stmt = db.prepare(
+      "INSERT OR REPLACE INTO products (time_slot, product_data) VALUES (?, ?)"
+    );
+
+    let inserted = 0;
+    let completed = 0;
+
+    products.forEach((product) => {
+      const productJson = JSON.stringify(product);
+      stmt.run([timeSlot, productJson], function (err) {
+        if (err) {
+          console.error("Error inserting product:", err);
+        } else {
+          inserted++;
+        }
+        completed++;
+        if (completed === products.length) {
+          stmt.finalize();
+          resolve(inserted);
+        }
+      });
+    });
+  });
+}
+
+// API: Get products from external flashsale API (with pagination)
 app.get("/api/products", async (req, res) => {
   try {
     const {
       get_time,
-      page = 1,
-      limit = 10000,
       sort_by = "discount",
       rating_filter = "all",
       query = "",
       fs = "false",
+      force_reload = "false",
     } = req.query;
 
-    // Get valid token
-    let token = await getValidApiToken();
+    // Build API parameters
+    const getTime = get_time || "";
 
-    // Build API URL
-    const getTime = get_time || apiToken.defaultGetTime || "";
-    const apiUrl = `${API_BASE_4ANM}/search_flashsale2025.php?get_time=${getTime}&page=${page}&limit=${limit}&sort_by=${sort_by}&rating_filter=${rating_filter}&query=${encodeURIComponent(
-      query
-    )}&fs=${fs}`;
-
-    let response;
-    try {
-      response = await fetch(apiUrl, {
-        method: "GET",
-        headers: {
-          Cookie: token.cookie,
-          "x-csrf-token": token.csrfToken,
-          "x-requested-with": "XMLHttpRequest",
-          Referer: `${API_BASE_4ANM}/flashsale`,
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          Accept: "application/json, text/plain, */*",
-          "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
-        },
+    if (!getTime) {
+      res.status(400).json({
+        success: false,
+        error: "get_time is required",
       });
-    } catch (fetchError) {
-      // If fetch fails, try refreshing token
-      console.log("⚠️ [Server] Fetch failed, refreshing token...");
-      token = await refreshApiToken();
-      response = await fetch(apiUrl, {
-        method: "GET",
-        headers: {
-          Cookie: token.cookie,
-          "x-csrf-token": token.csrfToken,
-          "x-requested-with": "XMLHttpRequest",
-          Referer: `${API_BASE_4ANM}/flashsale`,
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          Accept: "application/json, text/plain, */*",
-          "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
-        },
-      });
+      return;
     }
 
-    // If unauthorized or forbidden, refresh token and retry
-    if (response.status === 401 || response.status === 403) {
+    const shouldForceReload = force_reload === "true" || force_reload === "1";
+
+    // Helper function to fetch and filter products by time slot
+    const fetchProductsForTimeSlot = async () => {
+      console.log(`🔄 [Server] Fetching products for time slot ${getTime}...`);
+
+      // Clear old products for this time slot before fetching
+      await clearProductsForTimeSlot(getTime);
+
+      // Fetch all products from API
+      const allProductsRaw = await fetchAllProductsFromAPI();
+
+      // Filter products by time slot (sale_time)
+      const filteredProducts = allProductsRaw.filter((product) => {
+        if (!product.sale_time) return false;
+        const productTimeSlot = String(product.sale_time);
+        return productTimeSlot === getTime;
+      });
+
       console.log(
-        "⚠️ [Server] Unauthorized/Forbidden, refreshing token and retrying..."
+        `✅ [Server] Filtered ${filteredProducts.length} products for time slot ${getTime} from ${allProductsRaw.length} total products`
       );
-      token = await refreshApiToken();
-      response = await fetch(apiUrl, {
-        method: "GET",
-        headers: {
-          Cookie: token.cookie,
-          "x-csrf-token": token.csrfToken,
-          "x-requested-with": "XMLHttpRequest",
-          Referer: `${API_BASE_4ANM}/flashsale`,
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          Accept: "application/json, text/plain, */*",
-          "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
-        },
+
+      // Map products to old format
+      const mappedProducts = filteredProducts.map(mapProductToOldFormat);
+
+      // Save to database
+      await saveProductsToDB(getTime, mappedProducts);
+
+      // Get get_times from API
+      const timeSlotMap = new Map();
+      allProductsRaw.forEach((product) => {
+        if (product.sale_time) {
+          const timeSlot = String(product.sale_time);
+          if (!timeSlotMap.has(timeSlot)) {
+            const date = new Date(product.sale_time * 1000);
+            const vietnamTimeMs = date.getTime() + 7 * 60 * 60 * 1000;
+            const vietnamDate = new Date(vietnamTimeMs);
+
+            const hours = String(vietnamDate.getUTCHours()).padStart(2, "0");
+            const minutes = String(vietnamDate.getUTCMinutes()).padStart(
+              2,
+              "0"
+            );
+            const day = String(vietnamDate.getUTCDate()).padStart(2, "0");
+            const month = String(vietnamDate.getUTCMonth() + 1).padStart(
+              2,
+              "0"
+            );
+
+            const displayTime = `${hours}:${minutes} | ${day}/${month}`;
+
+            timeSlotMap.set(timeSlot, {
+              start_time: timeSlot,
+              real_time: displayTime,
+            });
+          }
+        }
       });
 
-      // If still not ok after refresh, throw error
-      if (!response.ok) {
-        throw new Error(
-          `API returned ${response.status}: ${response.statusText} after token refresh`
-        );
-      }
-    } else if (!response.ok) {
-      // For other errors, throw immediately
-      throw new Error(
-        `API returned ${response.status}: ${response.statusText}`
+      const getTimes = Array.from(timeSlotMap.values()).sort((a, b) => {
+        return parseInt(a.start_time) - parseInt(b.start_time);
+      });
+
+      const defaultGetTime =
+        getTimes.length > 0 ? getTimes[getTimes.length - 1].start_time : null;
+
+      console.log(
+        `✅ [Server] Returning ${mappedProducts.length} products for time slot ${getTime}`
       );
+
+      return {
+        products: mappedProducts,
+        get_times: getTimes,
+        default_get_time: defaultGetTime,
+      };
+    };
+
+    // Check if products already exist in DB for this time slot (unless force reload)
+    if (!shouldForceReload) {
+      db.all(
+        "SELECT product_data FROM products WHERE time_slot = ?",
+        [getTime],
+        async (err, rows) => {
+          if (err) {
+            console.error("Error checking DB for products:", err);
+            // Continue to fetch from API
+            const result = await fetchProductsForTimeSlot();
+            res.json({
+              success: true,
+              data: {
+                products: result.products,
+                get_times: result.get_times,
+                default_get_time: result.default_get_time,
+                has_more: false,
+                from_cache: false,
+              },
+            });
+          } else if (rows && rows.length > 0) {
+            // Products exist in DB, return them
+            console.log(
+              `✅ [Server] Found ${rows.length} products in DB for time slot ${getTime}`
+            );
+            const products = rows.map((row) => JSON.parse(row.product_data));
+
+            // Get get_times from API
+            try {
+              const allProductsRaw = await fetchAllProductsFromAPI();
+              const timeSlotMap = new Map();
+              allProductsRaw.forEach((product) => {
+                if (product.sale_time) {
+                  const timeSlot = String(product.sale_time);
+                  if (!timeSlotMap.has(timeSlot)) {
+                    const date = new Date(product.sale_time * 1000);
+                    const vietnamTimeMs = date.getTime() + 7 * 60 * 60 * 1000;
+                    const vietnamDate = new Date(vietnamTimeMs);
+
+                    const hours = String(vietnamDate.getUTCHours()).padStart(
+                      2,
+                      "0"
+                    );
+                    const minutes = String(
+                      vietnamDate.getUTCMinutes()
+                    ).padStart(2, "0");
+                    const day = String(vietnamDate.getUTCDate()).padStart(
+                      2,
+                      "0"
+                    );
+                    const month = String(
+                      vietnamDate.getUTCMonth() + 1
+                    ).padStart(2, "0");
+
+                    const displayTime = `${hours}:${minutes} | ${day}/${month}`;
+
+                    timeSlotMap.set(timeSlot, {
+                      start_time: timeSlot,
+                      real_time: displayTime,
+                    });
+                  }
+                }
+              });
+
+              const getTimes = Array.from(timeSlotMap.values()).sort((a, b) => {
+                return parseInt(a.start_time) - parseInt(b.start_time);
+              });
+
+              const defaultGetTime =
+                getTimes.length > 0
+                  ? getTimes[getTimes.length - 1].start_time
+                  : null;
+
+              res.json({
+                success: true,
+                data: {
+                  products: products,
+                  get_times: getTimes,
+                  default_get_time: defaultGetTime,
+                  has_more: false,
+                  from_cache: true,
+                },
+              });
+            } catch (error) {
+              console.error("Error fetching get_times:", error);
+              // Return products from DB anyway
+              res.json({
+                success: true,
+                data: {
+                  products: products,
+                  get_times: [],
+                  default_get_time: null,
+                  has_more: false,
+                  from_cache: true,
+                },
+              });
+            }
+          } else {
+            // Products not in DB, fetch from API
+            const result = await fetchProductsForTimeSlot();
+            res.json({
+              success: true,
+              data: {
+                products: result.products,
+                get_times: result.get_times,
+                default_get_time: result.default_get_time,
+                has_more: false,
+                from_cache: false,
+              },
+            });
+          }
+        }
+      );
+    } else {
+      // Force reload: fetch from API
+      const result = await fetchProductsForTimeSlot();
+      res.json({
+        success: true,
+        data: {
+          products: result.products,
+          get_times: result.get_times,
+          default_get_time: result.default_get_time,
+          has_more: false,
+          from_cache: false,
+        },
+      });
     }
-
-    const data = await response.json();
-
-    // Store default get_time if available
-    if (data.default_get_time) {
-      apiToken.defaultGetTime = data.default_get_time;
-    }
-
-    res.json({
-      success: true,
-      data: {
-        products: data.products || [],
-        get_times: data.get_times || [],
-        default_get_time: data.default_get_time || null,
-        has_more: data.has_more || false,
-      },
-    });
   } catch (error) {
     console.error("❌ [Server] Error fetching products:", error);
-    // Try to refresh token and retry once
-    try {
-      console.log("🔄 [Server] Retrying with fresh token...");
-      const newToken = await refreshApiToken();
-      const {
-        get_time,
-        page = 1,
-        limit = 10000,
-        sort_by = "discount",
-        rating_filter = "all",
-        query = "",
-        fs = "false",
-      } = req.query;
-      const getTime = get_time || apiToken.defaultGetTime || "";
-      const retryUrl = `${API_BASE_4ANM}/search_flashsale2025.php?get_time=${getTime}&page=${page}&limit=${limit}&sort_by=${sort_by}&rating_filter=${rating_filter}&query=${encodeURIComponent(
-        query
-      )}&fs=${fs}`;
-
-      const retryResponse = await fetch(retryUrl, {
-        method: "GET",
-        headers: {
-          Cookie: newToken.cookie,
-          "x-csrf-token": newToken.csrfToken,
-          "x-requested-with": "XMLHttpRequest",
-          Referer: `${API_BASE_4ANM}/flashsale`,
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          Accept: "application/json, text/plain, */*",
-          "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
-        },
-      });
-
-      if (retryResponse.ok) {
-        const retryData = await retryResponse.json();
-        if (retryData.default_get_time) {
-          apiToken.defaultGetTime = retryData.default_get_time;
-        }
-        res.json({
-          success: true,
-          data: {
-            products: retryData.products || [],
-            get_times: retryData.get_times || [],
-            default_get_time: retryData.default_get_time || null,
-            has_more: retryData.has_more || false,
-          },
-        });
-      } else {
-        throw error;
-      }
-    } catch (retryError) {
-      console.error("❌ [Server] Retry also failed:", retryError);
-      res.status(500).json({
-        success: false,
-        error: error.message || "Failed to fetch products",
-      });
-    }
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to fetch products",
+    });
   }
 });
 

@@ -12,7 +12,7 @@ let linkMappingCache = {}; // Cache for affiliate links: { originalLink: { longL
 let lastScanTime = null; // Last time we scanned for new links
 let scanInterval = null; // Interval for auto-scanning
 
-// API base URL for server (4anm.top API is now proxied through server)
+// API base URL for server (addlivetag.com API is now proxied through server)
 
 // Initialize on page load
 document.addEventListener("DOMContentLoaded", () => {
@@ -147,7 +147,7 @@ async function hasCustomLinks(timeSlot) {
 
 // API calls are now proxied through server - no need for client-side token management
 
-// Load time buttons from server API (proxied from 4anm.top)
+// Load time buttons from server API (from addlivetag.com)
 async function loadTimeButtons() {
   try {
     // Fetch time slots from server API
@@ -451,26 +451,41 @@ async function loadProducts(forceReloadData = false) {
           result.data.products.length > 0
         ) {
           // Map products from new format to old format
-          allProducts = result.data.products.map((product) => ({
-            title: product.name || "",
-            price: product.price || "0",
-            original_price:
-              product.price_before_discount || product.price || "0",
-            img: product.image
-              ? `https://cf.shopee.vn/file/${product.image}`
-              : "https://via.placeholder.com/300x300?text=No+Image",
-            link: product.link || "",
-            percent: product.discount || 0,
-            amount: product.stock || 0,
-            sold: product.sold || 0,
-            rating_star: product.rating_star || 0,
-            shop_location: product.shop_location || "",
-            shop_id: product.shop_id || 0,
-            item_id: product.item_id || 0,
-            start_time: product.start_time || product.start_time || "",
-            // Keep original data for reference
-            _original: product,
-          }));
+          allProducts = result.data.products
+            .filter((product) => product && product.link) // Filter out invalid products
+            .map((product) => {
+              // Build image URL
+              let imgUrl = "https://via.placeholder.com/300x300?text=No+Image";
+              if (product.image) {
+                // If image is already a full URL, use it directly
+                if (product.image.startsWith("http")) {
+                  imgUrl = product.image;
+                } else {
+                  // Otherwise, construct Shopee CDN URL
+                  imgUrl = `https://cf.shopee.vn/file/${product.image}`;
+                }
+              }
+
+              return {
+                title: product.name || "",
+                price: String(product.price || "0"),
+                original_price: String(
+                  product.price_before_discount || product.price || "0"
+                ),
+                img: imgUrl,
+                link: product.link || "",
+                percent: Number(product.discount || 0),
+                amount: Number(product.stock || 0),
+                sold: Number(product.sold || 0),
+                rating_star: Number(product.rating_star || 0),
+                shop_location: product.shop_location || "",
+                shop_id: Number(product.shop_id || 0),
+                item_id: Number(product.item_id || 0),
+                start_time: String(product.start_time || ""),
+                // Keep original data for reference
+                _original: product,
+              };
+            });
 
           totalProducts = result.data.has_more
             ? allProducts.length
@@ -712,7 +727,6 @@ function createProductCard(product) {
     product.title
   )}" class="product-image" 
                      onerror="this.src='https://via.placeholder.com/300x300?text=No+Image'">
-                <div class="discount-badge-overlay">-${discountPercent}%</div>
                 ${
                   hasAffiliateLink
                     ? '<div class="affiliate-badge">🔗 Affiliate</div>'
@@ -1007,7 +1021,7 @@ async function scanForNewLinks() {
 // Global variable to cache data
 let adminDataCache = null;
 const CACHE_DURATION = 60000; // 1 minute cache
-const API_BASE_URL = "https://buichung.vn/api"; // Node.js API base URL
+const API_BASE_URL = "http://localhost:3000/api"; // Node.js API base URL
 
 // Load all data from API
 async function loadAllDataFromJSON(forceReload = false) {
