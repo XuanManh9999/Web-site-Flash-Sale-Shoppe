@@ -1021,7 +1021,7 @@ async function scanForNewLinks() {
 // Global variable to cache data
 let adminDataCache = null;
 const CACHE_DURATION = 60000; // 1 minute cache
-const API_BASE_URL = "http://localhost:3000/api"; // Node.js API base URL
+const API_BASE_URL = "https://buichung.vn/api"; // Node.js API base URL
 
 // Load all data from API
 async function loadAllDataFromJSON(forceReload = false) {
@@ -1215,7 +1215,9 @@ function goToPage(page) {
 // Format price
 function formatPrice(price) {
   const numPrice = typeof price === "string" ? parseFloat(price) : price;
-  return new Intl.NumberFormat("vi-VN").format(numPrice);
+  // Nếu giá < 1000 thì hiển thị là 1000
+  const displayPrice = numPrice < 1000 ? 1000 : numPrice;
+  return new Intl.NumberFormat("vi-VN").format(displayPrice);
 }
 
 // Escape HTML

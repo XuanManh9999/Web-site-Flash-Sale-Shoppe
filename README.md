@@ -24,8 +24,8 @@ npm run dev
 
 3. Mở trình duyệt:
 
-- Trang chính: http://localhost:3000
-- Trang admin: http://localhost:3000/admin.html
+- Trang chính: https://buichung.vn
+- Trang admin: https://buichung.vn/admin.html
 
 ## Cấu trúc
 
