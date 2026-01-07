@@ -1215,8 +1215,20 @@ function goToPage(page) {
 // Format price
 function formatPrice(price) {
   const numPrice = typeof price === "string" ? parseFloat(price) : price;
-  // Nếu giá < 1000 thì hiển thị là 1000
-  const displayPrice = numPrice < 1000 ? 1000 : numPrice;
+
+  // Rule hiển thị:
+  // - Dưới 3.000 → hiển thị 1.000
+  // - Từ 3.000 đến dưới 13.000 → hiển thị 9.000
+  // - Còn lại giữ nguyên giá gốc
+  let displayPrice;
+  if (numPrice < 3000) {
+    displayPrice = 1000;
+  } else if (numPrice < 13000) {
+    displayPrice = 9000;
+  } else {
+    displayPrice = numPrice;
+  }
+
   return new Intl.NumberFormat("vi-VN").format(displayPrice);
 }
 

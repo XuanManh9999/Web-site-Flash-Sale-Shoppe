@@ -28,13 +28,23 @@ const app = express();
 const PORT = 3000;
 const DB_PATH = "./data.db";
 // New API endpoint
-const API_BASE_DEALXK = "https://addlivetag.com/api/data_dealxk.php";
+const API_BASE_DEALXK = "https://addlivetag.com/api/data_dealxk.php?aff_id=07970797";
+
+// Increase timeout for long-running requests
+const REQUEST_TIMEOUT = 300000; // 5 minutes
 
 // Middleware
 app.use(cors());
 app.use(bodyParser.json({ limit: "50mb" }));
 app.use(bodyParser.urlencoded({ extended: true, limit: "50mb" }));
 app.use(express.static("."));
+
+// Middleware to set timeout for all requests
+app.use((req, res, next) => {
+  req.setTimeout(REQUEST_TIMEOUT);
+  res.setTimeout(REQUEST_TIMEOUT);
+  next();
+});
 
 // Initialize database
 function initDatabase() {
@@ -391,27 +401,71 @@ app.post("/api/system-status", (req, res) => {
 
 // ==================== DEALXK API PROXY ====================
 
+// Helper function to convert Unix timestamp to Vietnam time and format
+function getVietnamTimeFromTimestamp(timestamp) {
+  if (!timestamp) return null;
+  const date = new Date(timestamp * 1000);
+  
+  // Convert to Vietnam time (UTC+7) using toLocaleString
+  const vietnamDateStr = date.toLocaleString("en-US", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  
+  // Parse the formatted string: "MM/DD/YYYY, HH:MM:SS"
+  const parts = vietnamDateStr.split(", ");
+  const datePart = parts[0].split("/");
+  const timePart = parts[1].split(":");
+  
+  return {
+    hours: parseInt(timePart[0]),
+    minutes: parseInt(timePart[1]),
+    day: parseInt(datePart[1]),
+    month: parseInt(datePart[0]),
+    year: parseInt(datePart[2]),
+  };
+}
+
 // Helper function to convert Unix timestamp to time slot format (for matching)
 function getTimeSlotFromTimestamp(timestamp) {
   if (!timestamp) return null;
-  const date = new Date(timestamp * 1000);
-  // Convert to Vietnam time (UTC+7)
-  const vietnamTimeMs = date.getTime() + 7 * 60 * 60 * 1000;
-  const vietnamDate = new Date(vietnamTimeMs);
+  const vnTime = getVietnamTimeFromTimestamp(timestamp);
+  if (!vnTime) return null;
+  
+  // Format: HHmm (e.g., "0900" for 09:00)
+  return `${String(vnTime.hours).padStart(2, "0")}${String(vnTime.minutes).padStart(2, "0")}`;
+}
 
-  // Extract hour and minute
-  const hours = vietnamDate.getUTCHours();
-  const minutes = vietnamDate.getUTCMinutes();
-
-  // Format: HHmm (e.g., "0000" for 00:00)
-  return `${String(hours).padStart(2, "0")}${String(minutes).padStart(2, "0")}`;
+// Helper function to get time slot key from product (use sale_slot if available, else convert sale_time)
+function getProductTimeSlotKey(product) {
+  if (!product) return null;
+  
+  // Priority 1: Use sale_slot if available (format: "09:00")
+  if (product.sale_slot) {
+    const [hours, minutes] = product.sale_slot.split(":");
+    return `${String(parseInt(hours || 0)).padStart(2, "0")}${String(parseInt(minutes || 0)).padStart(2, "0")}`;
+  }
+  
+  // Priority 2: Convert sale_time timestamp to "HHmm" format
+  if (product.sale_time) {
+    return getTimeSlotFromTimestamp(product.sale_time);
+  }
+  
+  return null;
 }
 
 // Helper function to normalize time slot for comparison
 function normalizeTimeSlot(timeSlot) {
   if (!timeSlot) return null;
   // If it's a Unix timestamp, convert it
-  if (/^\d+$/.test(timeSlot)) {
+  if (/^\d+$/.test(timeSlot) && timeSlot.length > 8) {
+    // It's a timestamp (long number)
     return getTimeSlotFromTimestamp(parseInt(timeSlot));
   }
   // If it's in format "HH:mm", convert to "HHmm"
@@ -460,33 +514,33 @@ app.get("/api/times", async (req, res) => {
     const timeSlotMap = new Map();
 
     products.forEach((product) => {
-      if (product.sale_time) {
-        // Use sale_time as the key (Unix timestamp)
-        const timeSlot = String(product.sale_time);
-        if (!timeSlotMap.has(timeSlot)) {
-          // Format display: "HH:mm | DD/MM"
-          const date = new Date(product.sale_time * 1000);
-          const vietnamTimeMs = date.getTime() + 7 * 60 * 60 * 1000;
-          const vietnamDate = new Date(vietnamTimeMs);
+      // Get time slot key (use sale_slot or convert sale_time)
+      const timeSlotKey = getProductTimeSlotKey(product);
+      
+      if (timeSlotKey && !timeSlotMap.has(timeSlotKey)) {
+        // Format display: "HH:mm | DD/MM" using correct Vietnam time conversion
+        if (product.sale_time) {
+          const vnTime = getVietnamTimeFromTimestamp(product.sale_time);
+          if (vnTime) {
+            const hours = String(vnTime.hours).padStart(2, "0");
+            const minutes = String(vnTime.minutes).padStart(2, "0");
+            const day = String(vnTime.day).padStart(2, "0");
+            const month = String(vnTime.month).padStart(2, "0");
 
-          const hours = String(vietnamDate.getUTCHours()).padStart(2, "0");
-          const minutes = String(vietnamDate.getUTCMinutes()).padStart(2, "0");
-          const day = String(vietnamDate.getUTCDate()).padStart(2, "0");
-          const month = String(vietnamDate.getUTCMonth() + 1).padStart(2, "0");
+            const displayTime = `${hours}:${minutes} | ${day}/${month}`;
 
-          const displayTime = `${hours}:${minutes} | ${day}/${month}`;
-
-          timeSlotMap.set(timeSlot, {
-            start_time: timeSlot,
-            real_time: displayTime,
-          });
+            timeSlotMap.set(timeSlotKey, {
+              start_time: timeSlotKey,
+              real_time: displayTime,
+            });
+          }
         }
       }
     });
 
-    // Convert map to array and sort by start_time (timestamp)
+    // Convert map to array and sort by start_time (HHmm format)
     const getTimes = Array.from(timeSlotMap.values()).sort((a, b) => {
-      return parseInt(a.start_time) - parseInt(b.start_time);
+      return a.start_time.localeCompare(b.start_time);
     });
 
     // Get default get_time (latest time slot)
@@ -511,33 +565,62 @@ app.get("/api/times", async (req, res) => {
   }
 });
 
-// Helper function to fetch all products from API and filter by time slot
+// Helper function to fetch all products from API (single request, no pagination)
 async function fetchAllProductsFromAPI() {
-  console.log("🔄 [Server] Fetching all products from API...");
+  console.log("🔄 [Server] Fetching all products from API (single request, no pagination)...");
+  
+  const timeout = 60000; // 60 seconds timeout for single request
+  
+  try {
+    // Create AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
+    const response = await fetch(API_BASE_DEALXK, {
+      method: "GET",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "application/json, text/plain, */*",
+        "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
+      },
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
 
-  const response = await fetch(API_BASE_DEALXK, {
-    method: "GET",
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      Accept: "application/json, text/plain, */*",
-      "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
-    },
-  });
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}: ${response.statusText}`);
+    }
 
-  if (!response.ok) {
-    throw new Error(`API returned ${response.status}: ${response.statusText}`);
+    const data = await response.json();
+    
+    // Check if response is array (direct products) or object with products array
+    let products = [];
+    if (Array.isArray(data)) {
+      products = data;
+    } else if (data.products && Array.isArray(data.products)) {
+      products = data.products;
+    } else if (data.data && Array.isArray(data.data)) {
+      products = data.data;
+    } else {
+      throw new Error("API returned invalid data format");
+    }
+
+    console.log(`✅ [Server] Fetched ${products.length} products from API (single request, no pagination)`);
+    return products;
+  } catch (error) {
+    console.error("❌ [Server] Error fetching products from API:", error.message);
+    throw error;
   }
+}
 
-  const products = await response.json();
-
-  if (!Array.isArray(products)) {
-    throw new Error("API returned invalid data format");
-  }
-
-  console.log(`✅ [Server] Fetched ${products.length} products from API`);
-
-  return products;
+// Helper to normalize price for DB & filtering
+function normalizePrice(rawPrice) {
+  const p = Number(rawPrice) || 0;
+  if (p < 3000) return 1000; // < 3k → 1k
+  if (p < 13000) return 9000; // 3k–<13k → 9k
+  return p;
 }
 
 // Helper function to map product from new format to old format
@@ -562,10 +645,15 @@ function mapProductToOldFormat(product) {
     }
   }
 
+  const normalizedPrice = normalizePrice(product.price || 0);
+  const normalizedOriginalPrice = normalizePrice(
+    product.original_price || product.price || 0
+  );
+
   return {
     name: product.title || "",
-    price: String(product.price || 0),
-    price_before_discount: String(product.original_price || product.price || 0),
+    price: String(normalizedPrice),
+    price_before_discount: String(normalizedOriginalPrice),
     image: imageId,
     link: product.link || "",
     discount: product.percent || 0,
@@ -598,7 +686,7 @@ function clearProductsForTimeSlot(timeSlot) {
   });
 }
 
-// Helper function to save products to database
+// Helper function to save products to database (optimized with batch insert)
 function saveProductsToDB(timeSlot, products) {
   return new Promise((resolve, reject) => {
     if (!products || products.length === 0) {
@@ -606,30 +694,169 @@ function saveProductsToDB(timeSlot, products) {
       return;
     }
 
-    // Insert new products (using link as unique identifier)
-    const stmt = db.prepare(
-      "INSERT OR REPLACE INTO products (time_slot, product_data) VALUES (?, ?)"
-    );
-
-    let inserted = 0;
-    let completed = 0;
-
-    products.forEach((product) => {
-      const productJson = JSON.stringify(product);
-      stmt.run([timeSlot, productJson], function (err) {
+    db.serialize(() => {
+      // Begin transaction
+      db.run("BEGIN TRANSACTION", (err) => {
         if (err) {
-          console.error("Error inserting product:", err);
-        } else {
-          inserted++;
+          reject(err);
+          return;
         }
-        completed++;
-        if (completed === products.length) {
-          stmt.finalize();
-          resolve(inserted);
-        }
+
+        const stmt = db.prepare(
+          "INSERT OR REPLACE INTO products (time_slot, product_data) VALUES (?, ?)"
+        );
+
+        let inserted = 0;
+        let completed = 0;
+        const batchSize = 500; // Process in larger batches for better performance
+
+        const processBatch = (startIndex) => {
+          const endIndex = Math.min(startIndex + batchSize, products.length);
+          
+          for (let i = startIndex; i < endIndex; i++) {
+            const product = products[i];
+            const productJson = JSON.stringify(product);
+            
+            stmt.run([timeSlot, productJson], function (err) {
+              if (err) {
+                console.error("Error inserting product:", err);
+              } else {
+                inserted++;
+              }
+              completed++;
+              
+              if (completed === products.length) {
+                stmt.finalize((err) => {
+                  if (err) {
+                    db.run("ROLLBACK");
+                    reject(err);
+                    return;
+                  }
+                  
+                  // Commit transaction
+                  db.run("COMMIT", (err) => {
+                    if (err) {
+                      console.error("Error committing transaction:", err);
+                      db.run("ROLLBACK");
+                      reject(err);
+                    } else {
+                      resolve(inserted);
+                    }
+                  });
+                });
+              } else if (completed % batchSize === 0 && completed < products.length) {
+                // Process next batch asynchronously to avoid blocking
+                setImmediate(() => processBatch(endIndex));
+              }
+            });
+          }
+        };
+
+        processBatch(0);
       });
     });
   });
+}
+
+// Cache for all products to avoid refetching
+let allProductsCache = null;
+let cacheTimestamp = null;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache
+
+// Helper function to load products for a specific time slot (optimized - only save requested time slot)
+async function loadAndSaveProductsForTimeSlot(requestedTimeSlot, forceRefresh = false) {
+  // Check cache first
+  const now = Date.now();
+  const cacheKey = `timeSlot_${requestedTimeSlot}`;
+  
+  if (!forceRefresh && allProductsCache && cacheTimestamp && (now - cacheTimestamp) < CACHE_DURATION) {
+    const cached = allProductsCache[cacheKey];
+    if (cached) {
+      console.log(`📦 [Server] Using cached products data for time slot ${requestedTimeSlot}`);
+      return cached;
+    }
+  }
+  
+  console.log(`🔄 [Server] Loading products for time slot ${requestedTimeSlot}...`);
+  
+  try {
+    // Fetch ALL products from API (single request, no pagination)
+    const allProductsRaw = await fetchAllProductsFromAPI();
+    console.log(`📦 [Server] Fetched ${allProductsRaw.length} total products from API`);
+    
+    // Filter products for requested time slot only
+    const normalizedRequestedTimeSlot = normalizeTimeSlot(requestedTimeSlot);
+    const productsForTimeSlot = allProductsRaw.filter((product) => {
+      const productTimeSlotKey = getProductTimeSlotKey(product);
+      return productTimeSlotKey === normalizedRequestedTimeSlot;
+    });
+    
+    console.log(`📊 [Server] Found ${productsForTimeSlot.length} products for time slot ${normalizedRequestedTimeSlot}`);
+    
+    // Build time slot info map for all time slots (for get_times)
+    const timeSlotInfoMap = new Map();
+    allProductsRaw.forEach((product) => {
+      const timeSlotKey = getProductTimeSlotKey(product);
+      if (timeSlotKey && !timeSlotInfoMap.has(timeSlotKey) && product.sale_time) {
+        const vnTime = getVietnamTimeFromTimestamp(product.sale_time);
+        if (vnTime) {
+          const hours = String(vnTime.hours).padStart(2, "0");
+          const minutes = String(vnTime.minutes).padStart(2, "0");
+          const day = String(vnTime.day).padStart(2, "0");
+          const month = String(vnTime.month).padStart(2, "0");
+          const displayTime = `${hours}:${minutes} | ${day}/${month}`;
+          
+          timeSlotInfoMap.set(timeSlotKey, {
+            start_time: timeSlotKey,
+            real_time: displayTime,
+          });
+        }
+      }
+    });
+    
+    // Convert time slot info map to array
+    const getTimes = Array.from(timeSlotInfoMap.values()).sort((a, b) => {
+      return a.start_time.localeCompare(b.start_time);
+    });
+    
+    // Save only products for requested time slot to DB
+    if (productsForTimeSlot.length > 0) {
+      console.log(`💾 [Server] Saving ${productsForTimeSlot.length} products for time slot ${normalizedRequestedTimeSlot}...`);
+      
+      // Clear old products for this time slot
+      await clearProductsForTimeSlot(normalizedRequestedTimeSlot);
+      
+      // Map products to old format
+      const mappedProducts = productsForTimeSlot.map(mapProductToOldFormat);
+      
+      // Save to database
+      await saveProductsToDB(normalizedRequestedTimeSlot, mappedProducts);
+      console.log(`✅ [Server] Saved ${productsForTimeSlot.length} products for time slot ${normalizedRequestedTimeSlot}`);
+    }
+    
+    const result = {
+      products: productsForTimeSlot.map(mapProductToOldFormat),
+      getTimes,
+      defaultGetTime: getTimes.length > 0 ? getTimes[getTimes.length - 1].start_time : null,
+    };
+    
+    // Update cache
+    if (!allProductsCache) {
+      allProductsCache = {};
+    }
+    allProductsCache[cacheKey] = result;
+    cacheTimestamp = now;
+    
+    return result;
+  } catch (error) {
+    console.error("❌ [Server] Error loading and saving products:", error);
+    // Return cached data if available, even if expired
+    if (allProductsCache && allProductsCache[cacheKey]) {
+      console.log("⚠️ [Server] Returning stale cache due to error");
+      return allProductsCache[cacheKey];
+    }
+    throw error;
+  }
 }
 
 // API: Get products from external flashsale API (with pagination)
@@ -656,88 +883,34 @@ app.get("/api/products", async (req, res) => {
     }
 
     const shouldForceReload = force_reload === "true" || force_reload === "1";
+    
+    // Normalize getTime to "HHmm" format for matching
+    const normalizedGetTime = normalizeTimeSlot(getTime);
 
     // Helper function to fetch and filter products by time slot
     const fetchProductsForTimeSlot = async () => {
-      console.log(`🔄 [Server] Fetching products for time slot ${getTime}...`);
+      console.log(`🔄 [Server] Loading products for time slot ${getTime} (normalized: ${normalizedGetTime})...`);
 
-      // Clear old products for this time slot before fetching
-      await clearProductsForTimeSlot(getTime);
-
-      // Fetch all products from API
-      const allProductsRaw = await fetchAllProductsFromAPI();
-
-      // Filter products by time slot (sale_time)
-      const filteredProducts = allProductsRaw.filter((product) => {
-        if (!product.sale_time) return false;
-        const productTimeSlot = String(product.sale_time);
-        return productTimeSlot === getTime;
-      });
-
+      // Load and save products for requested time slot only (optimized - no pagination, single API call)
+      const result = await loadAndSaveProductsForTimeSlot(normalizedGetTime, shouldForceReload);
+      
       console.log(
-        `✅ [Server] Filtered ${filteredProducts.length} products for time slot ${getTime} from ${allProductsRaw.length} total products`
-      );
-
-      // Map products to old format
-      const mappedProducts = filteredProducts.map(mapProductToOldFormat);
-
-      // Save to database
-      await saveProductsToDB(getTime, mappedProducts);
-
-      // Get get_times from API
-      const timeSlotMap = new Map();
-      allProductsRaw.forEach((product) => {
-        if (product.sale_time) {
-          const timeSlot = String(product.sale_time);
-          if (!timeSlotMap.has(timeSlot)) {
-            const date = new Date(product.sale_time * 1000);
-            const vietnamTimeMs = date.getTime() + 7 * 60 * 60 * 1000;
-            const vietnamDate = new Date(vietnamTimeMs);
-
-            const hours = String(vietnamDate.getUTCHours()).padStart(2, "0");
-            const minutes = String(vietnamDate.getUTCMinutes()).padStart(
-              2,
-              "0"
-            );
-            const day = String(vietnamDate.getUTCDate()).padStart(2, "0");
-            const month = String(vietnamDate.getUTCMonth() + 1).padStart(
-              2,
-              "0"
-            );
-
-            const displayTime = `${hours}:${minutes} | ${day}/${month}`;
-
-            timeSlotMap.set(timeSlot, {
-              start_time: timeSlot,
-              real_time: displayTime,
-            });
-          }
-        }
-      });
-
-      const getTimes = Array.from(timeSlotMap.values()).sort((a, b) => {
-        return parseInt(a.start_time) - parseInt(b.start_time);
-      });
-
-      const defaultGetTime =
-        getTimes.length > 0 ? getTimes[getTimes.length - 1].start_time : null;
-
-      console.log(
-        `✅ [Server] Returning ${mappedProducts.length} products for time slot ${getTime}`
+        `✅ [Server] Returning ${result.products.length} products for time slot ${normalizedGetTime}`
       );
 
       return {
-        products: mappedProducts,
-        get_times: getTimes,
-        default_get_time: defaultGetTime,
+        products: result.products,
+        get_times: result.getTimes,
+        default_get_time: result.defaultGetTime,
       };
     };
 
     // Check if products already exist in DB for this time slot (unless force reload)
+    // Use normalized time slot for DB query
     if (!shouldForceReload) {
       db.all(
         "SELECT product_data FROM products WHERE time_slot = ?",
-        [getTime],
+        [normalizedGetTime],
         async (err, rows) => {
           if (err) {
             console.error("Error checking DB for products:", err);
@@ -756,49 +929,54 @@ app.get("/api/products", async (req, res) => {
           } else if (rows && rows.length > 0) {
             // Products exist in DB, return them
             console.log(
-              `✅ [Server] Found ${rows.length} products in DB for time slot ${getTime}`
+              `✅ [Server] Found ${rows.length} products in DB for time slot ${normalizedGetTime}`
             );
-            const products = rows.map((row) => JSON.parse(row.product_data));
+            // Normalize price fields when loading from DB so filter & UI dùng đúng rule
+            const products = rows.map((row) => {
+              const p = JSON.parse(row.product_data);
+              if (p && typeof p === "object") {
+                if (p.price !== undefined) {
+                  p.price = String(normalizePrice(p.price));
+                }
+                if (p.price_before_discount !== undefined) {
+                  p.price_before_discount = String(
+                    normalizePrice(p.price_before_discount)
+                  );
+                }
+              }
+              return p;
+            });
 
             // Get get_times from API
             try {
               const allProductsRaw = await fetchAllProductsFromAPI();
               const timeSlotMap = new Map();
               allProductsRaw.forEach((product) => {
-                if (product.sale_time) {
-                  const timeSlot = String(product.sale_time);
-                  if (!timeSlotMap.has(timeSlot)) {
-                    const date = new Date(product.sale_time * 1000);
-                    const vietnamTimeMs = date.getTime() + 7 * 60 * 60 * 1000;
-                    const vietnamDate = new Date(vietnamTimeMs);
+                // Use getProductTimeSlotKey to get consistent time slot key
+                const timeSlotKey = getProductTimeSlotKey(product);
+                if (timeSlotKey && !timeSlotMap.has(timeSlotKey)) {
+                  // Use correct Vietnam time conversion
+                  if (product.sale_time) {
+                    const vnTime = getVietnamTimeFromTimestamp(product.sale_time);
+                    if (vnTime) {
+                      const hours = String(vnTime.hours).padStart(2, "0");
+                      const minutes = String(vnTime.minutes).padStart(2, "0");
+                      const day = String(vnTime.day).padStart(2, "0");
+                      const month = String(vnTime.month).padStart(2, "0");
 
-                    const hours = String(vietnamDate.getUTCHours()).padStart(
-                      2,
-                      "0"
-                    );
-                    const minutes = String(
-                      vietnamDate.getUTCMinutes()
-                    ).padStart(2, "0");
-                    const day = String(vietnamDate.getUTCDate()).padStart(
-                      2,
-                      "0"
-                    );
-                    const month = String(
-                      vietnamDate.getUTCMonth() + 1
-                    ).padStart(2, "0");
+                      const displayTime = `${hours}:${minutes} | ${day}/${month}`;
 
-                    const displayTime = `${hours}:${minutes} | ${day}/${month}`;
-
-                    timeSlotMap.set(timeSlot, {
-                      start_time: timeSlot,
-                      real_time: displayTime,
-                    });
+                      timeSlotMap.set(timeSlotKey, {
+                        start_time: timeSlotKey,
+                        real_time: displayTime,
+                      });
+                    }
                   }
                 }
               });
 
               const getTimes = Array.from(timeSlotMap.values()).sort((a, b) => {
-                return parseInt(a.start_time) - parseInt(b.start_time);
+                return a.start_time.localeCompare(b.start_time);
               });
 
               const defaultGetTime =
